@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Animated Translation Orb</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: #F2E6DA;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            overflow: hidden;
+        }
+
+        .orb-container {
+            position: relative;
+            width: 400px;
+            height: 400px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* Ambient glow - largest, most diffuse */
+        .ambient-glow {
+            position: absolute;
+            width: 350px;
+            height: 350px;
+            border-radius: 50%;
+            filter: blur(60px);
+            animation: ambient-pulse 4s ease-in-out infinite;
+        }
+
+        .ambient-glow.orange {
+            background: radial-gradient(circle, rgba(232, 146, 58, 0.3) 0%, transparent 70%);
+        }
+
+        .ambient-glow.blue {
+            background: radial-gradient(circle, rgba(91, 155, 213, 0.3) 0%, transparent 70%);
+        }
+
+        /* Outer glow layer */
+        .outer-glow {
+            position: absolute;
+            width: 280px;
+            height: 280px;
+            border-radius: 50%;
+            filter: blur(40px);
+            animation: float 3s ease-in-out infinite, wobble 3s ease-in-out infinite;
+        }
+
+        .outer-glow.orange {
+            background: radial-gradient(circle, rgba(232, 146, 58, 0.5) 0%, transparent 70%);
+        }
+
+        .outer-glow.blue {
+            background: radial-gradient(circle, rgba(91, 155, 213, 0.5) 0%, transparent 70%);
+        }
+
+        /* Middle layer */
+        .middle-glow {
+            position: absolute;
+            width: 200px;
+            height: 200px;
+            border-radius: 50%;
+            filter: blur(30px);
+            animation: float-reverse 3s ease-in-out infinite, scale-pulse 2.5s ease-in-out infinite;
+        }
+
+        .middle-glow.orange {
+            background: radial-gradient(circle, rgba(244, 164, 96, 0.6) 0%, rgba(232, 146, 58, 0.3) 70%, transparent 100%);
+        }
+
+        .middle-glow.blue {
+            background: radial-gradient(circle, rgba(135, 206, 235, 0.6) 0%, rgba(91, 155, 213, 0.3) 70%, transparent 100%);
+        }
+
+        /* Core - brightest center */
+        .core {
+            position: absolute;
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            filter: blur(15px);
+            animation: core-float 2s ease-in-out infinite, core-pulse 2s ease-in-out infinite;
+        }
+
+        .core.orange {
+            background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.9) 0%, rgba(232, 146, 58, 0.8) 50%, transparent 100%);
+        }
+
+        .core.blue {
+            background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.9) 0%, rgba(91, 155, 213, 0.8) 50%, transparent 100%);
+        }
+
+        /* Inner bright spot */
+        .inner-core {
+            position: absolute;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            filter: blur(8px);
+            animation: inner-pulse 1.5s ease-in-out infinite;
+        }
+
+        .inner-core.orange {
+            background: radial-gradient(circle at 40% 40%, rgba(255, 255, 255, 0.95) 0%, rgba(255, 200, 150, 0.7) 50%, transparent 100%);
+        }
+
+        .inner-core.blue {
+            background: radial-gradient(circle at 40% 40%, rgba(255, 255, 255, 0.95) 0%, rgba(150, 200, 255, 0.7) 50%, transparent 100%);
+        }
+
+        /* Animations */
+        @keyframes ambient-pulse {
+            0%, 100% { transform: scale(0.95); opacity: 0.8; }
+            50% { transform: scale(1.15); opacity: 1; }
+        }
+
+        @keyframes float {
+            0%, 100% {
+                transform: translate(-8px, 5px) scale(0.9) rotate(-3deg);
+            }
+            50% {
+                transform: translate(8px, -5px) scale(1.1) rotate(3deg);
+            }
+        }
+
+        @keyframes wobble {
+            0%, 100% { transform: rotate(-3deg); }
+            50% { transform: rotate(3deg); }
+        }
+
+        @keyframes float-reverse {
+            0%, 100% {
+                transform: translate(6px, -4px) scale(0.92);
+            }
+            50% {
+                transform: translate(-6px, 4px) scale(1.08);
+            }
+        }
+
+        @keyframes scale-pulse {
+            0%, 100% { transform: scale(0.95); }
+            50% { transform: scale(1.05); }
+        }
+
+        @keyframes core-float {
+            0%, 100% { transform: translate(-4px, 3px); }
+            50% { transform: translate(4px, -3px); }
+        }
+
+        @keyframes core-pulse {
+            0%, 100% { transform: scale(0.95); opacity: 0.9; }
+            50% { transform: scale(1.05); opacity: 1; }
+        }
+
+        @keyframes inner-pulse {
+            0%, 100% { transform: scale(0.9); opacity: 0.85; }
+            50% { transform: scale(1.1); opacity: 1; }
+        }
+
+        /* Controls */
+        .controls {
+            margin-top: 50px;
+            display: flex;
+            gap: 20px;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            background: rgba(255, 255, 255, 0.1);
+            color: #888;
+        }
+
+        .btn:hover {
+            transform: scale(1.05);
+        }
+
+        .btn.active.orange {
+            background: rgba(232, 146, 58, 0.3);
+            color: #E8923A;
+            box-shadow: 0 0 20px rgba(232, 146, 58, 0.3);
+        }
+
+        .btn.active.blue {
+            background: rgba(91, 155, 213, 0.3);
+            color: #5B9BD5;
+            box-shadow: 0 0 20px rgba(91, 155, 213, 0.3);
+        }
+
+        .instructions {
+            margin-top: 30px;
+            color: #666;
+            font-size: 14px;
+        }
+
+        .title {
+            position: absolute;
+            top: 30px;
+            color: #5a4a3a;
+            font-size: 24px;
+            font-weight: 300;
+            letter-spacing: 2px;
+        }
+
+        /* Transition for color change */
+        .ambient-glow, .outer-glow, .middle-glow, .core, .inner-core {
+            transition: background 0.5s ease;
+        }
+
+        /* Audio reactive mode styles */
+        .audio-reactive .ambient-glow {
+            animation: audio-ambient 0.1s ease-out;
+        }
+
+        .audio-reactive .core {
+            animation: audio-core 0.1s ease-out;
+        }
+
+        @keyframes audio-ambient {
+            0% { transform: scale(var(--audio-scale, 1)); }
+            100% { transform: scale(1); }
+        }
+
+        @keyframes audio-core {
+            0% { transform: scale(var(--audio-scale, 1)); filter: blur(calc(15px + var(--audio-blur, 0px))); }
+            100% { transform: scale(1); filter: blur(15px); }
+        }
+    </style>
+</head>
+<body>
+    <div class="title">Translation Orb</div>
+
+    <div class="orb-container" id="orbContainer">
+        <div class="ambient-glow orange" id="ambientGlow"></div>
+        <div class="outer-glow orange" id="outerGlow"></div>
+        <div class="middle-glow orange" id="middleGlow"></div>
+        <div class="core orange" id="core"></div>
+        <div class="inner-core orange" id="innerCore"></div>
+    </div>
+
+    <div class="controls">
+        <button class="btn active orange" id="koreanBtn" onclick="setMode('korean')">
+            Korean (Orange)
+        </button>
+        <button class="btn" id="englishBtn" onclick="setMode('english')">
+            English (Blue)
+        </button>
+        <button class="btn" id="audioBtn" onclick="toggleAudioReactive()">
+            Audio Reactive
+        </button>
+    </div>
+
+    <div class="instructions">
+        Press <strong>K</strong> for Korean, <strong>E</strong> for English, <strong>A</strong> for Audio Reactive
+    </div>
+
+    <script>
+        let currentMode = 'korean';
+        let audioReactive = false;
+        let audioContext, analyser, microphone, dataArray;
+
+        function setMode(mode) {
+            currentMode = mode;
+            const elements = ['ambientGlow', 'outerGlow', 'middleGlow', 'core', 'innerCore'];
+            const colorClass = mode === 'korean' ? 'orange' : 'blue';
+            const removeClass = mode === 'korean' ? 'blue' : 'orange';
+
+            elements.forEach(id => {
+                const el = document.getElementById(id);
+                el.classList.remove(removeClass);
+                el.classList.add(colorClass);
+            });
+
+            // Update buttons
+            const koreanBtn = document.getElementById('koreanBtn');
+            const englishBtn = document.getElementById('englishBtn');
+
+            if (mode === 'korean') {
+                koreanBtn.classList.add('active', 'orange');
+                koreanBtn.classList.remove('blue');
+                englishBtn.classList.remove('active', 'blue', 'orange');
+            } else {
+                englishBtn.classList.add('active', 'blue');
+                englishBtn.classList.remove('orange');
+                koreanBtn.classList.remove('active', 'orange', 'blue');
+            }
+        }
+
+        async function toggleAudioReactive() {
+            const audioBtn = document.getElementById('audioBtn');
+            const container = document.getElementById('orbContainer');
+
+            if (!audioReactive) {
+                try {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    analyser = audioContext.createAnalyser();
+                    analyser.fftSize = 256;
+
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    microphone = audioContext.createMediaStreamSource(stream);
+                    microphone.connect(analyser);
+
+                    dataArray = new Uint8Array(analyser.frequencyBinCount);
+                    audioReactive = true;
+                    audioBtn.classList.add('active');
+                    audioBtn.style.background = 'rgba(100, 200, 100, 0.3)';
+                    audioBtn.style.color = '#6c6';
+
+                    updateAudioVisuals();
+                } catch (err) {
+                    console.error('Microphone access denied:', err);
+                    alert('Please allow microphone access for audio reactive mode');
+                }
+            } else {
+                audioReactive = false;
+                audioBtn.classList.remove('active');
+                audioBtn.style.background = '';
+                audioBtn.style.color = '';
+
+                if (microphone) {
+                    microphone.disconnect();
+                }
+                if (audioContext) {
+                    audioContext.close();
+                }
+            }
+        }
+
+        function updateAudioVisuals() {
+            if (!audioReactive) return;
+
+            analyser.getByteFrequencyData(dataArray);
+
+            // Calculate average volume (0-255 -> 0-1)
+            const average = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
+            const normalizedLevel = average / 255;
+
+            // Apply to orb elements
+            const ambientGlow = document.getElementById('ambientGlow');
+            const outerGlow = document.getElementById('outerGlow');
+            const middleGlow = document.getElementById('middleGlow');
+            const core = document.getElementById('core');
+            const innerCore = document.getElementById('innerCore');
+
+            const scale = 1 + (normalizedLevel * 0.4);
+            const blur = normalizedLevel * 20;
+
+            ambientGlow.style.transform = `scale(${0.95 + normalizedLevel * 0.3})`;
+            outerGlow.style.transform = `scale(${0.9 + normalizedLevel * 0.25})`;
+            middleGlow.style.transform = `scale(${0.92 + normalizedLevel * 0.2})`;
+            core.style.transform = `scale(${0.95 + normalizedLevel * 0.15})`;
+            core.style.filter = `blur(${15 + blur}px)`;
+            innerCore.style.transform = `scale(${0.9 + normalizedLevel * 0.2})`;
+
+            requestAnimationFrame(updateAudioVisuals);
+        }
+
+        // Keyboard controls
+        document.addEventListener('keydown', (e) => {
+            switch(e.key.toLowerCase()) {
+                case 'k':
+                    setMode('korean');
+                    break;
+                case 'e':
+                    setMode('english');
+                    break;
+                case 'a':
+                    toggleAudioReactive();
+                    break;
+            }
+        });
+    </script>
+</body>
+</html>

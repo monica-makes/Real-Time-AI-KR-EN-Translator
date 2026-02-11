@@ -1,0 +1,1032 @@
+[
+  {
+    "filename": "bkgd_noise.wav",
+    "direction": "ko_to_en",
+    "success": true,
+    "error": null,
+    "audio_duration_ms": 4884.0,
+    "total_latency_ms": 20571.88916015625,
+    "timings": [
+      {
+        "step": "session_start",
+        "duration_ms": 38.0,
+        "details": "session_id=8f1aae1a..."
+      },
+      {
+        "step": "gender_detection",
+        "duration_ms": 987.9,
+        "details": "gender=female"
+      },
+      {
+        "step": "stt_first_final",
+        "duration_ms": 3842.1,
+        "details": "text=오늘은너무졸리고..."
+      },
+      {
+        "step": "translation_first",
+        "duration_ms": 6363.3,
+        "details": "translated=I'm so sleepy today...."
+      },
+      {
+        "step": "audio_streaming",
+        "duration_ms": 20533.9,
+        "details": "sent 156288 bytes"
+      }
+    ],
+    "transcripts": [
+      {
+        "text": "오늘은너무졸리고",
+        "time_ms": 3944.61474609375
+      }
+    ],
+    "translations": [
+      {
+        "original": "오늘은너무졸리고",
+        "translated": "I'm so sleepy today.",
+        "time_ms": 6465.77490234375
+      },
+      {
+        "original": "배고파요.",
+        "translated": "I'm hungry.",
+        "time_ms": 12634.603759765625
+      }
+    ],
+    "gender_detected": "female",
+    "classifier_decisions": [
+      {
+        "clause": "오늘은",
+        "decision": "wait",
+        "time_ms": 3944.579833984375
+      },
+      {
+        "clause": "오늘은너무졸리고",
+        "decision": "safe",
+        "time_ms": 3944.60595703125
+      }
+    ],
+    "audio_output_bytes": 48991
+  },
+  {
+    "filename": "fast.wav",
+    "direction": "ko_to_en",
+    "success": true,
+    "error": null,
+    "audio_duration_ms": 4969.3125,
+    "total_latency_ms": 20620.671142578125,
+    "timings": [
+      {
+        "step": "session_start",
+        "duration_ms": 44.4,
+        "details": "session_id=970e2109..."
+      },
+      {
+        "step": "gender_detection",
+        "duration_ms": 984.9,
+        "details": "gender=male"
+      },
+      {
+        "step": "stt_first_final",
+        "duration_ms": 10577.8,
+        "details": "text=오늘날씨가좋아요..."
+      },
+      {
+        "step": "translation_first",
+        "duration_ms": 13020.3,
+        "details": "translated=The weather is nice today...."
+      },
+      {
+        "step": "audio_streaming",
+        "duration_ms": 20576.3,
+        "details": "sent 159018 bytes"
+      }
+    ],
+    "transcripts": [
+      {
+        "text": "오늘날씨가좋아요",
+        "time_ms": 10626.2216796875
+      }
+    ],
+    "translations": [
+      {
+        "original": "오늘날씨가좋아요",
+        "translated": "The weather is nice today.",
+        "time_ms": 13068.727783203125
+      }
+    ],
+    "gender_detected": "male",
+    "classifier_decisions": [
+      {
+        "clause": "오늘날씨가좋아요",
+        "decision": "safe",
+        "time_ms": 10626.201904296875
+      }
+    ],
+    "audio_output_bytes": 25122
+  },
+  {
+    "filename": "idiom1.wav",
+    "direction": "ko_to_en",
+    "success": true,
+    "error": null,
+    "audio_duration_ms": 3006.6875,
+    "total_latency_ms": 19646.529052734375,
+    "timings": [
+      {
+        "step": "session_start",
+        "duration_ms": 45.5,
+        "details": "session_id=4dde3875..."
+      },
+      {
+        "step": "gender_detection",
+        "duration_ms": 987.0,
+        "details": "gender=male"
+      },
+      {
+        "step": "stt_first_final",
+        "duration_ms": 9601.6,
+        "details": "text=눈이높아요..."
+      },
+      {
+        "step": "translation_first",
+        "duration_ms": 11694.9,
+        "details": "translated=You have high standards...."
+      },
+      {
+        "step": "audio_streaming",
+        "duration_ms": 19601.0,
+        "details": "sent 96214 bytes"
+      }
+    ],
+    "transcripts": [
+      {
+        "text": "눈이높아요",
+        "time_ms": 9650.76220703125
+      }
+    ],
+    "translations": [
+      {
+        "original": "눈이높아요",
+        "translated": "You have high standards.",
+        "time_ms": 11744.029052734375
+      }
+    ],
+    "gender_detected": "male",
+    "classifier_decisions": [
+      {
+        "clause": "눈이높아요",
+        "decision": "safe",
+        "time_ms": 9650.66796875
+      }
+    ],
+    "audio_output_bytes": 25122
+  },
+  {
+    "filename": "idiom2.wav",
+    "direction": "ko_to_en",
+    "success": true,
+    "error": null,
+    "audio_duration_ms": 4372.0,
+    "total_latency_ms": 20321.259033203125,
+    "timings": [
+      {
+        "step": "session_start",
+        "duration_ms": 48.5,
+        "details": "session_id=c92fd55e..."
+      },
+      {
+        "step": "gender_detection",
+        "duration_ms": 987.4,
+        "details": "gender=female"
+      },
+      {
+        "step": "stt_first_final",
+        "duration_ms": 3283.2,
+        "details": "text=식은죽먹기에요..."
+      },
+      {
+        "step": "translation_first",
+        "duration_ms": 5958.2,
+        "details": "translated=It's a piece of cake...."
+      },
+      {
+        "step": "audio_streaming",
+        "duration_ms": 20272.8,
+        "details": "sent 139904 bytes"
+      }
+    ],
+    "transcripts": [
+      {
+        "text": "식은죽먹기에요",
+        "time_ms": 3335.890869140625
+      }
+    ],
+    "translations": [
+      {
+        "original": "식은죽먹기에요",
+        "translated": "It's a piece of cake.",
+        "time_ms": 6010.849853515625
+      }
+    ],
+    "gender_detected": "female",
+    "classifier_decisions": [
+      {
+        "clause": "식은",
+        "decision": "wait",
+        "time_ms": 3335.8427734375
+      },
+      {
+        "clause": "식은죽먹기에요",
+        "decision": "safe",
+        "time_ms": 3335.8837890625
+      }
+    ],
+    "audio_output_bytes": 21360
+  },
+  {
+    "filename": "idiom3.wav",
+    "direction": "ko_to_en",
+    "success": true,
+    "error": null,
+    "audio_duration_ms": 3006.6875,
+    "total_latency_ms": 19650.966796875,
+    "timings": [
+      {
+        "step": "session_start",
+        "duration_ms": 50.5,
+        "details": "session_id=0e23e2a0..."
+      },
+      {
+        "step": "gender_detection",
+        "duration_ms": 989.7,
+        "details": "gender=male"
+      },
+      {
+        "step": "stt_first_final",
+        "duration_ms": 2623.0,
+        "details": "text=발이넓어요..."
+      },
+      {
+        "step": "translation_first",
+        "duration_ms": 4654.1,
+        "details": "translated=I'm well-connected...."
+      },
+      {
+        "step": "audio_streaming",
+        "duration_ms": 19600.5,
+        "details": "sent 96214 bytes"
+      }
+    ],
+    "transcripts": [
+      {
+        "text": "발이넓어요",
+        "time_ms": 2678.3212890625
+      }
+    ],
+    "translations": [
+      {
+        "original": "발이넓어요",
+        "translated": "I'm well-connected.",
+        "time_ms": 4709.408203125
+      }
+    ],
+    "gender_detected": "male",
+    "classifier_decisions": [
+      {
+        "clause": "발이넓어요",
+        "decision": "safe",
+        "time_ms": 2678.27197265625
+      }
+    ],
+    "audio_output_bytes": 25122
+  },
+  {
+    "filename": "long_pause_start.wav",
+    "direction": "ko_to_en",
+    "success": true,
+    "error": null,
+    "audio_duration_ms": 12393.3125,
+    "total_latency_ms": 24527.390380859375,
+    "timings": [
+      {
+        "step": "session_start",
+        "duration_ms": 47.5,
+        "details": "session_id=dcf61857..."
+      },
+      {
+        "step": "gender_detection",
+        "duration_ms": 990.3,
+        "details": "gender=female"
+      },
+      {
+        "step": "stt_first_final",
+        "duration_ms": 9574.5,
+        "details": "text=어제내가식당을갔을때고기를시켜먹었어요..."
+      },
+      {
+        "step": "translation_first",
+        "duration_ms": 12030.7,
+        "details": "translated=Yesterday when I went to the r..."
+      },
+      {
+        "step": "audio_streaming",
+        "duration_ms": 24479.9,
+        "details": "sent 396586 bytes"
+      }
+    ],
+    "transcripts": [
+      {
+        "text": "어제내가식당을갔을때고기를시켜먹었어요",
+        "time_ms": 9628.77197265625
+      }
+    ],
+    "translations": [
+      {
+        "original": "어제내가식당을갔을때고기를시켜먹었어요",
+        "translated": "Yesterday when I went to the restaurant, I ordered and ate meat.",
+        "time_ms": 12084.93115234375
+      }
+    ],
+    "gender_detected": "female",
+    "classifier_decisions": [
+      {
+        "clause": "어제내가식당을",
+        "decision": "wait",
+        "time_ms": 9628.298095703125
+      },
+      {
+        "clause": "어제내가식당을갔을",
+        "decision": "wait",
+        "time_ms": 9628.760009765625
+      },
+      {
+        "clause": "어제내가식당을갔을때고기를시켜먹었어요",
+        "decision": "safe",
+        "time_ms": 9628.76708984375
+      }
+    ],
+    "audio_output_bytes": 57723
+  },
+  {
+    "filename": "multi_utterances.wav",
+    "direction": "ko_to_en",
+    "success": true,
+    "error": null,
+    "audio_duration_ms": 16660.0,
+    "total_latency_ms": 26674.455078125,
+    "timings": [
+      {
+        "step": "session_start",
+        "duration_ms": 45.8,
+        "details": "session_id=44b6daca..."
+      },
+      {
+        "step": "gender_detection",
+        "duration_ms": 982.9,
+        "details": "gender=female"
+      },
+      {
+        "step": "stt_first_final",
+        "duration_ms": 3770.2,
+        "details": "text=고양이는너무귀여워요..."
+      },
+      {
+        "step": "translation_first",
+        "duration_ms": 5982.0,
+        "details": "translated=The cat is so cute...."
+      },
+      {
+        "step": "audio_streaming",
+        "duration_ms": 26628.7,
+        "details": "sent 533120 bytes"
+      }
+    ],
+    "transcripts": [
+      {
+        "text": "고양이는너무귀여워요",
+        "time_ms": 3821.946044921875
+      },
+      {
+        "text": "지금기분이너무좋아요",
+        "time_ms": 7222.64697265625
+      }
+    ],
+    "translations": [
+      {
+        "original": "고양이는너무귀여워요",
+        "translated": "The cat is so cute.",
+        "time_ms": 6033.748779296875
+      },
+      {
+        "original": "지금기분이너무좋아요",
+        "translated": "I'm feeling so good right now.",
+        "time_ms": 9404.327880859375
+      },
+      {
+        "original": "나는어린지몰라요.",
+        "translated": "I don't know if I'm young.",
+        "time_ms": 13799.4921875
+      }
+    ],
+    "gender_detected": "female",
+    "classifier_decisions": [
+      {
+        "clause": "고양이는",
+        "decision": "wait",
+        "time_ms": 3821.8359375
+      },
+      {
+        "clause": "고양이는너무귀여워요",
+        "decision": "safe",
+        "time_ms": 3821.928955078125
+      },
+      {
+        "clause": "지금기분이너무좋아요",
+        "decision": "safe",
+        "time_ms": 7222.608154296875
+      },
+      {
+        "clause": "나는",
+        "decision": "wait",
+        "time_ms": 11230.9560546875
+      }
+    ],
+    "audio_output_bytes": 86651
+  },
+  {
+    "filename": "short.wav",
+    "direction": "ko_to_en",
+    "success": true,
+    "error": null,
+    "audio_duration_ms": 2238.6875,
+    "total_latency_ms": 19227.19189453125,
+    "timings": [
+      {
+        "step": "session_start",
+        "duration_ms": 34.6,
+        "details": "session_id=373a6ede..."
+      },
+      {
+        "step": "gender_detection",
+        "duration_ms": 989.0,
+        "details": "gender=female"
+      },
+      {
+        "step": "translation_first",
+        "duration_ms": 11676.3,
+        "details": "translated=Yes,..."
+      },
+      {
+        "step": "audio_streaming",
+        "duration_ms": 19192.6,
+        "details": "sent 71638 bytes"
+      }
+    ],
+    "transcripts": [],
+    "translations": [
+      {
+        "original": "네,",
+        "translated": "Yes,",
+        "time_ms": 11713.505859375
+      }
+    ],
+    "gender_detected": "female",
+    "classifier_decisions": [],
+    "audio_output_bytes": 13837
+  },
+  {
+    "filename": "wrong_lang.wav",
+    "direction": "ko_to_en",
+    "success": true,
+    "error": null,
+    "audio_duration_ms": 4628.0,
+    "total_latency_ms": 20495.115966796875,
+    "timings": [
+      {
+        "step": "session_start",
+        "duration_ms": 62.8,
+        "details": "session_id=c2ab90e0..."
+      },
+      {
+        "step": "gender_detection",
+        "duration_ms": 992.1,
+        "details": "gender=female"
+      },
+      {
+        "step": "translation_first",
+        "duration_ms": 12606.1,
+        "details": "translated=Testing the Korean-English pip..."
+      },
+      {
+        "step": "audio_streaming",
+        "duration_ms": 20432.3,
+        "details": "sent 148096 bytes"
+      }
+    ],
+    "transcripts": [],
+    "translations": [
+      {
+        "original": "TestinforEnglishtheranKoreanbipeline.",
+        "translated": "Testing the Korean-English pipeline.",
+        "time_ms": 12677.4169921875
+      }
+    ],
+    "gender_detected": "female",
+    "classifier_decisions": [],
+    "audio_output_bytes": 43930
+  },
+  {
+    "filename": "bkgd_noise.wav",
+    "direction": "en_to_ko",
+    "success": true,
+    "error": null,
+    "audio_duration_ms": 6420.0,
+    "total_latency_ms": 21413.953125,
+    "timings": [
+      {
+        "step": "session_start",
+        "duration_ms": 56.3,
+        "details": "session_id=275cd05b..."
+      },
+      {
+        "step": "gender_detection",
+        "duration_ms": 997.0,
+        "details": "gender=male"
+      },
+      {
+        "step": "stt_first_final",
+        "duration_ms": 4389.7,
+        "details": "text=This test case is for backgrou..."
+      },
+      {
+        "step": "translation_first",
+        "duration_ms": 6299.6,
+        "details": "translated=이 테스트 케이스는 배경 소음용이에요...."
+      },
+      {
+        "step": "audio_streaming",
+        "duration_ms": 21357.7,
+        "details": "sent 205440 bytes"
+      }
+    ],
+    "transcripts": [
+      {
+        "text": "This test case is for background noise.",
+        "time_ms": 4452.14208984375
+      }
+    ],
+    "translations": [
+      {
+        "original": "This test case is for background noise.",
+        "translated": "이 테스트 케이스는 배경 소음용이에요.",
+        "time_ms": 6362.057373046875
+      }
+    ],
+    "gender_detected": "male",
+    "classifier_decisions": [],
+    "audio_output_bytes": 39333
+  },
+  {
+    "filename": "fast.wav",
+    "direction": "en_to_ko",
+    "success": true,
+    "error": null,
+    "audio_duration_ms": 2750.6875,
+    "total_latency_ms": 19490.921875,
+    "timings": [
+      {
+        "step": "session_start",
+        "duration_ms": 41.1,
+        "details": "session_id=b0d2554b..."
+      },
+      {
+        "step": "gender_detection",
+        "duration_ms": 992.2,
+        "details": "gender=female"
+      },
+      {
+        "step": "stt_first_final",
+        "duration_ms": 9452.9,
+        "details": "text=I'm talking really fast for th..."
+      },
+      {
+        "step": "translation_first",
+        "duration_ms": 12086.7,
+        "details": "translated=이 테스트 케이스를 위해 정말 빨리 말하고 있어요...."
+      },
+      {
+        "step": "audio_streaming",
+        "duration_ms": 19449.8,
+        "details": "sent 88022 bytes"
+      }
+    ],
+    "transcripts": [
+      {
+        "text": "I'm talking really fast for this test case.",
+        "time_ms": 9496.63427734375
+      }
+    ],
+    "translations": [
+      {
+        "original": "I'm talking really fast for this test case.",
+        "translated": "이 테스트 케이스를 위해 정말 빨리 말하고 있어요.",
+        "time_ms": 12130.451416015625
+      }
+    ],
+    "gender_detected": "female",
+    "classifier_decisions": [],
+    "audio_output_bytes": 68217
+  },
+  {
+    "filename": "honorific.wav",
+    "direction": "en_to_ko",
+    "success": true,
+    "error": null,
+    "audio_duration_ms": 2921.3125,
+    "total_latency_ms": 19611.359130859375,
+    "timings": [
+      {
+        "step": "session_start",
+        "duration_ms": 58.2,
+        "details": "session_id=ebb6880c..."
+      },
+      {
+        "step": "gender_detection",
+        "duration_ms": 988.7,
+        "details": "gender=female"
+      },
+      {
+        "step": "stt_first_final",
+        "duration_ms": 9554.5,
+        "details": "text=Did you eat?..."
+      },
+      {
+        "step": "translation_first",
+        "duration_ms": 11687.7,
+        "details": "translated=밥 먹었어요?..."
+      },
+      {
+        "step": "audio_streaming",
+        "duration_ms": 19553.2,
+        "details": "sent 93482 bytes"
+      }
+    ],
+    "transcripts": [
+      {
+        "text": "Did you eat?",
+        "time_ms": 9619.7568359375
+      }
+    ],
+    "translations": [
+      {
+        "original": "Did you eat?",
+        "translated": "밥 먹었어요?",
+        "time_ms": 11752.97412109375
+      }
+    ],
+    "gender_detected": "female",
+    "classifier_decisions": [],
+    "audio_output_bytes": 21360
+  },
+  {
+    "filename": "idiom.wav",
+    "direction": "en_to_ko",
+    "success": true,
+    "error": null,
+    "audio_duration_ms": 3689.3125,
+    "total_latency_ms": 19969.0859375,
+    "timings": [
+      {
+        "step": "session_start",
+        "duration_ms": 56.2,
+        "details": "session_id=862b04e4..."
+      },
+      {
+        "step": "gender_detection",
+        "duration_ms": 990.9,
+        "details": "gender=female"
+      },
+      {
+        "step": "stt_first_final",
+        "duration_ms": 3064.2,
+        "details": "text=It's raining cats and dogs...."
+      },
+      {
+        "step": "translation_first",
+        "duration_ms": 5418.7,
+        "details": "translated=비가 억수로 내려요...."
+      },
+      {
+        "step": "audio_streaming",
+        "duration_ms": 19912.9,
+        "details": "sent 118058 bytes"
+      }
+    ],
+    "transcripts": [
+      {
+        "text": "It's raining cats and dogs.",
+        "time_ms": 3126.071044921875
+      }
+    ],
+    "translations": [
+      {
+        "original": "It's raining cats and dogs.",
+        "translated": "비가 억수로 내려요.",
+        "time_ms": 5480.519775390625
+      }
+    ],
+    "gender_detected": "female",
+    "classifier_decisions": [],
+    "audio_output_bytes": 30974
+  },
+  {
+    "filename": "long_pause_start.wav",
+    "direction": "en_to_ko",
+    "success": true,
+    "error": null,
+    "audio_duration_ms": 11113.3125,
+    "total_latency_ms": 23857.642822265625,
+    "timings": [
+      {
+        "step": "session_start",
+        "duration_ms": 44.9,
+        "details": "session_id=4c18dd57..."
+      },
+      {
+        "step": "gender_detection",
+        "duration_ms": 986.0,
+        "details": "gender=male"
+      },
+      {
+        "step": "stt_first_final",
+        "duration_ms": 13826.8,
+        "details": "text=This has a long pause at the s..."
+      },
+      {
+        "step": "translation_first",
+        "duration_ms": 16475.3,
+        "details": "translated=이건 시작 부분에 긴 멈춤이 있어요...."
+      },
+      {
+        "step": "audio_streaming",
+        "duration_ms": 23812.7,
+        "details": "sent 355626 bytes"
+      }
+    ],
+    "transcripts": [
+      {
+        "text": "This has a long pause at the start.",
+        "time_ms": 13874.869873046875
+      }
+    ],
+    "translations": [
+      {
+        "original": "This has a long pause at the start.",
+        "translated": "이건 시작 부분에 긴 멈춤이 있어요.",
+        "time_ms": 16523.341796875
+      }
+    ],
+    "gender_detected": "male",
+    "classifier_decisions": [],
+    "audio_output_bytes": 38497
+  },
+  {
+    "filename": "multi_utterances.wav",
+    "direction": "en_to_ko",
+    "success": true,
+    "error": null,
+    "audio_duration_ms": 10601.3125,
+    "total_latency_ms": 23598.9619140625,
+    "timings": [
+      {
+        "step": "session_start",
+        "duration_ms": 55.5,
+        "details": "session_id=9d210336..."
+      },
+      {
+        "step": "gender_detection",
+        "duration_ms": 989.6,
+        "details": "gender=female"
+      },
+      {
+        "step": "stt_first_final",
+        "duration_ms": 6010.9,
+        "details": "text=Hi...."
+      },
+      {
+        "step": "translation_first",
+        "duration_ms": 8145.7,
+        "details": "translated=안녕하세요...."
+      },
+      {
+        "step": "audio_streaming",
+        "duration_ms": 23543.5,
+        "details": "sent 339242 bytes"
+      }
+    ],
+    "transcripts": [
+      {
+        "text": "Hi.",
+        "time_ms": 6077.197021484375
+      },
+      {
+        "text": "My name is Monica.",
+        "time_ms": 8211.991943359375
+      },
+      {
+        "text": "This is to test multiple sentences.",
+        "time_ms": 10719.428955078125
+      },
+      {
+        "text": "It is very windy today.",
+        "time_ms": 13369.6650390625
+      },
+      {
+        "text": "It is very windy today.",
+        "time_ms": 13612.82421875
+      }
+    ],
+    "translations": [
+      {
+        "original": "Hi.",
+        "translated": "안녕하세요.",
+        "time_ms": 8211.970947265625
+      },
+      {
+        "original": "My name is Monica.",
+        "translated": "제 이름은 모니카예요.",
+        "time_ms": 10719.39990234375
+      },
+      {
+        "original": "This is to test multiple sentences.",
+        "translated": "여러 문장을 테스트하기 위한 거예요.",
+        "time_ms": 13369.593994140625
+      },
+      {
+        "original": "It is very windy today.",
+        "translated": "오늘 바람이 많이 불어요.",
+        "time_ms": 15615.28515625
+      },
+      {
+        "original": "It is very windy today.",
+        "translated": "오늘 바람이 많이 불어요.",
+        "time_ms": 15867.156982421875
+      }
+    ],
+    "gender_detected": "female",
+    "classifier_decisions": [],
+    "audio_output_bytes": 180870
+  },
+  {
+    "filename": "pronouns.wav",
+    "direction": "en_to_ko",
+    "success": true,
+    "error": null,
+    "audio_duration_ms": 3006.6875,
+    "total_latency_ms": 19669.283935546875,
+    "timings": [
+      {
+        "step": "session_start",
+        "duration_ms": 61.8,
+        "details": "session_id=b16830b0..."
+      },
+      {
+        "step": "gender_detection",
+        "duration_ms": 1001.8,
+        "details": "gender=female"
+      },
+      {
+        "step": "stt_first_final",
+        "duration_ms": 2558.6,
+        "details": "text=They said they'll come...."
+      },
+      {
+        "step": "translation_first",
+        "duration_ms": 4669.0,
+        "details": "translated=온다고 했어요...."
+      },
+      {
+        "step": "audio_streaming",
+        "duration_ms": 19607.5,
+        "details": "sent 96214 bytes"
+      }
+    ],
+    "transcripts": [
+      {
+        "text": "They said they'll come.",
+        "time_ms": 2627.430908203125
+      }
+    ],
+    "translations": [
+      {
+        "original": "They said they'll come.",
+        "translated": "온다고 했어요.",
+        "time_ms": 4737.826904296875
+      }
+    ],
+    "gender_detected": "female",
+    "classifier_decisions": [],
+    "audio_output_bytes": 22196
+  },
+  {
+    "filename": "short.wav",
+    "direction": "en_to_ko",
+    "success": true,
+    "error": null,
+    "audio_duration_ms": 2324.0,
+    "total_latency_ms": 19299.98681640625,
+    "timings": [
+      {
+        "step": "session_start",
+        "duration_ms": 52.2,
+        "details": "session_id=ae1e335a..."
+      },
+      {
+        "step": "gender_detection",
+        "duration_ms": 993.3,
+        "details": "gender=male"
+      },
+      {
+        "step": "stt_first_final",
+        "duration_ms": 9264.1,
+        "details": "text=Bye...."
+      },
+      {
+        "step": "translation_first",
+        "duration_ms": 11298.2,
+        "details": "translated=안녕히 가세요...."
+      },
+      {
+        "step": "audio_streaming",
+        "duration_ms": 19247.8,
+        "details": "sent 74368 bytes"
+      }
+    ],
+    "transcripts": [
+      {
+        "text": "Bye.",
+        "time_ms": 9321.02783203125
+      }
+    ],
+    "translations": [
+      {
+        "original": "Bye.",
+        "translated": "안녕히 가세요.",
+        "time_ms": 11355.034912109375
+      }
+    ],
+    "gender_detected": "male",
+    "classifier_decisions": [],
+    "audio_output_bytes": 20107
+  },
+  {
+    "filename": "slang.wav",
+    "direction": "en_to_ko",
+    "success": true,
+    "error": null,
+    "audio_duration_ms": 3006.6875,
+    "total_latency_ms": 19658.31396484375,
+    "timings": [
+      {
+        "step": "session_start",
+        "duration_ms": 56.2,
+        "details": "session_id=887187d2..."
+      },
+      {
+        "step": "gender_detection",
+        "duration_ms": 994.4,
+        "details": "gender=female"
+      },
+      {
+        "step": "stt_first_final",
+        "duration_ms": 9601.9,
+        "details": "text=That's lit...."
+      },
+      {
+        "step": "translation_first",
+        "duration_ms": 12021.3,
+        "details": "translated=진짜 대박이에요...."
+      },
+      {
+        "step": "audio_streaming",
+        "duration_ms": 19602.1,
+        "details": "sent 96214 bytes"
+      }
+    ],
+    "transcripts": [
+      {
+        "text": "That's lit.",
+        "time_ms": 9668.937744140625
+      }
+    ],
+    "translations": [
+      {
+        "original": "That's lit.",
+        "translated": "진짜 대박이에요.",
+        "time_ms": 12088.2880859375
+      }
+    ],
+    "gender_detected": "female",
+    "classifier_decisions": [],
+    "audio_output_bytes": 25122
+  }
+]

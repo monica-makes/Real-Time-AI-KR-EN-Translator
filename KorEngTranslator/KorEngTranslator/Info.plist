@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDisplayName</key>
+    <string>Dari AI Translate</string>
+    <key>UIAppFonts</key>
+    <array>
+        <string>Geist-Regular.ttf</string>
+        <string>Geist-Medium.ttf</string>
+        <string>Geist-SemiBold.ttf</string>
+        <string>Geist-Bold.ttf</string>
+        <string>Pretendard-Regular.otf</string>
+        <string>Pretendard-Medium.otf</string>
+        <string>Pretendard-SemiBold.otf</string>
+        <string>Pretendard-Bold.otf</string>
+        <string>PPEditorialNew-Regular.otf</string>
+        <string>PPEditorialNew-Bold.otf</string>
+        <string>PPEditorialNew-Italic.otf</string>
+        <string>PPEditorialNew-BoldItalic.otf</string>
+        <string>NotoSerifKR-Variable.ttf</string>
+    </array>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>This app needs access to your microphone to capture speech for real-time translation between Korean and English.</string>
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>This app uses Bluetooth to connect to your headphones for real-time translation.</string>
+    <key>NSBluetoothPeripheralUsageDescription</key>
+    <string>This app uses Bluetooth to connect to your headphones for real-time translation.</string>
+    <key>NSCameraUsageDescription</key>
+    <string>This app needs camera access to scan QR codes for pairing with your translation partner.</string>
+    <key>UIApplicationSceneManifest</key>
+    <dict>
+        <key>UIApplicationSupportsMultipleScenes</key>
+        <false/>
+        <key>UISceneConfigurations</key>
+        <dict>
+            <key>UIWindowSceneSessionRoleApplication</key>
+            <array>
+                <dict>
+                    <key>UISceneConfigurationName</key>
+                    <string>Default Configuration</string>
+                    <key>UISceneDelegateClassName</key>
+                    <string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
+                </dict>
+            </array>
+        </dict>
+    </dict>
+</dict>
+</plist>

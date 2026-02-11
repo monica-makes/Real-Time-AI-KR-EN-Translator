@@ -1,0 +1,475 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 70;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		5209822A2F1AB50100391F71 /* WelcomeScreenLangSelect.swift in Sources */ = {isa = PBXBuildFile; fileRef = 520982292F1AB50100391F71 /* WelcomeScreenLangSelect.swift */; };
+		5209826B2F1ABAA900391F71 /* PPEditorialNew-Bold.otf in Resources */ = {isa = PBXBuildFile; fileRef = 520982622F1ABAA900391F71 /* PPEditorialNew-Bold.otf */; };
+		5209826C2F1ABAA900391F71 /* Pretendard-Regular.otf in Resources */ = {isa = PBXBuildFile; fileRef = 520982682F1ABAA900391F71 /* Pretendard-Regular.otf */; };
+		5209826D2F1ABAA900391F71 /* Geist-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 5209825E2F1ABAA900391F71 /* Geist-Bold.ttf */; };
+		5209826E2F1ABAA900391F71 /* Geist-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 520982612F1ABAA900391F71 /* Geist-SemiBold.ttf */; };
+		5209826F2F1ABAA900391F71 /* Geist-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 5209825F2F1ABAA900391F71 /* Geist-Medium.ttf */; };
+		520982702F1ABAA900391F71 /* Geist-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 520982602F1ABAA900391F71 /* Geist-Regular.ttf */; };
+		520982712F1ABAA900391F71 /* PPEditorialNew-Regular.otf in Resources */ = {isa = PBXBuildFile; fileRef = 520982652F1ABAA900391F71 /* PPEditorialNew-Regular.otf */; };
+		520982722F1ABAA900391F71 /* PPEditorialNew-Italic.otf in Resources */ = {isa = PBXBuildFile; fileRef = 520982642F1ABAA900391F71 /* PPEditorialNew-Italic.otf */; };
+		520982732F1ABAA900391F71 /* Pretendard-Bold.otf in Resources */ = {isa = PBXBuildFile; fileRef = 520982662F1ABAA900391F71 /* Pretendard-Bold.otf */; };
+		520982742F1ABAA900391F71 /* Pretendard-SemiBold.otf in Resources */ = {isa = PBXBuildFile; fileRef = 520982692F1ABAA900391F71 /* Pretendard-SemiBold.otf */; };
+		520982752F1ABAA900391F71 /* Pretendard-Medium.otf in Resources */ = {isa = PBXBuildFile; fileRef = 520982672F1ABAA900391F71 /* Pretendard-Medium.otf */; };
+		520982762F1ABAA900391F71 /* PPEditorialNew-BoldItalic.otf in Resources */ = {isa = PBXBuildFile; fileRef = 520982632F1ABAA900391F71 /* PPEditorialNew-BoldItalic.otf */; };
+		5209827A2F1AC26200391F71 /* NotoSerifKR-Variable.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 520982792F1AC26200391F71 /* NotoSerifKR-Variable.ttf */; };
+		5209827E2F1ACFC000391F71 /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5209827D2F1ACFC000391F71 /* DesignSystem.swift */; };
+		520982822F1B525600391F71 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 520982812F1B525600391F71 /* Assets.xcassets */; };
+		520982842F1C728C00391F71 /* PairingFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 520982832F1C728C00391F71 /* PairingFlow.swift */; };
+		A1000001 /* KorEngTranslatorApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000001 /* KorEngTranslatorApp.swift */; };
+		A1000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000002 /* ContentView.swift */; };
+		A1000003 /* AudioSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000003 /* AudioSessionManager.swift */; };
+		A1000004 /* AudioCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000004 /* AudioCaptureService.swift */; };
+		A1000005 /* AudioPlaybackService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000005 /* AudioPlaybackService.swift */; };
+		A1000006 /* WebSocketManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000006 /* WebSocketManager.swift */; };
+		A1000007 /* MessageTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000007 /* MessageTypes.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		520982292F1AB50100391F71 /* WelcomeScreenLangSelect.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeScreenLangSelect.swift; sourceTree = "<group>"; };
+		5209825E2F1ABAA900391F71 /* Geist-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Geist-Bold.ttf"; sourceTree = "<group>"; };
+		5209825F2F1ABAA900391F71 /* Geist-Medium.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Geist-Medium.ttf"; sourceTree = "<group>"; };
+		520982602F1ABAA900391F71 /* Geist-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Geist-Regular.ttf"; sourceTree = "<group>"; };
+		520982612F1ABAA900391F71 /* Geist-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Geist-SemiBold.ttf"; sourceTree = "<group>"; };
+		520982622F1ABAA900391F71 /* PPEditorialNew-Bold.otf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "PPEditorialNew-Bold.otf"; sourceTree = "<group>"; };
+		520982632F1ABAA900391F71 /* PPEditorialNew-BoldItalic.otf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "PPEditorialNew-BoldItalic.otf"; sourceTree = "<group>"; };
+		520982642F1ABAA900391F71 /* PPEditorialNew-Italic.otf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "PPEditorialNew-Italic.otf"; sourceTree = "<group>"; };
+		520982652F1ABAA900391F71 /* PPEditorialNew-Regular.otf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "PPEditorialNew-Regular.otf"; sourceTree = "<group>"; };
+		520982662F1ABAA900391F71 /* Pretendard-Bold.otf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Pretendard-Bold.otf"; sourceTree = "<group>"; };
+		520982672F1ABAA900391F71 /* Pretendard-Medium.otf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Pretendard-Medium.otf"; sourceTree = "<group>"; };
+		520982682F1ABAA900391F71 /* Pretendard-Regular.otf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Pretendard-Regular.otf"; sourceTree = "<group>"; };
+		520982692F1ABAA900391F71 /* Pretendard-SemiBold.otf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Pretendard-SemiBold.otf"; sourceTree = "<group>"; };
+		520982792F1AC26200391F71 /* NotoSerifKR-Variable.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "NotoSerifKR-Variable.ttf"; sourceTree = "<group>"; };
+		5209827D2F1ACFC000391F71 /* DesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignSystem.swift; sourceTree = "<group>"; };
+		520982812F1B525600391F71 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		520982832F1C728C00391F71 /* PairingFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingFlow.swift; sourceTree = "<group>"; };
+		A2000001 /* KorEngTranslatorApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KorEngTranslatorApp.swift; sourceTree = "<group>"; };
+		A2000002 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		A2000003 /* AudioSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioSessionManager.swift; sourceTree = "<group>"; };
+		A2000004 /* AudioCaptureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioCaptureService.swift; sourceTree = "<group>"; };
+		A2000005 /* AudioPlaybackService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlaybackService.swift; sourceTree = "<group>"; };
+		A2000006 /* WebSocketManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSocketManager.swift; sourceTree = "<group>"; };
+		A2000007 /* MessageTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageTypes.swift; sourceTree = "<group>"; };
+		A2000008 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A3000001 /* KorEngTranslator.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KorEngTranslator.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		5209828C2F1EDEB800391F71 /* Components */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = Components; sourceTree = "<group>"; };
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A4000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		5209826A2F1ABAA900391F71 /* Fonts */ = {
+			isa = PBXGroup;
+			children = (
+				520982792F1AC26200391F71 /* NotoSerifKR-Variable.ttf */,
+				5209825E2F1ABAA900391F71 /* Geist-Bold.ttf */,
+				5209825F2F1ABAA900391F71 /* Geist-Medium.ttf */,
+				520982602F1ABAA900391F71 /* Geist-Regular.ttf */,
+				520982612F1ABAA900391F71 /* Geist-SemiBold.ttf */,
+				520982622F1ABAA900391F71 /* PPEditorialNew-Bold.otf */,
+				520982632F1ABAA900391F71 /* PPEditorialNew-BoldItalic.otf */,
+				520982642F1ABAA900391F71 /* PPEditorialNew-Italic.otf */,
+				520982652F1ABAA900391F71 /* PPEditorialNew-Regular.otf */,
+				520982662F1ABAA900391F71 /* Pretendard-Bold.otf */,
+				520982672F1ABAA900391F71 /* Pretendard-Medium.otf */,
+				520982682F1ABAA900391F71 /* Pretendard-Regular.otf */,
+				520982692F1ABAA900391F71 /* Pretendard-SemiBold.otf */,
+			);
+			path = Fonts;
+			sourceTree = "<group>";
+		};
+		A5000001 = {
+			isa = PBXGroup;
+			children = (
+				520982812F1B525600391F71 /* Assets.xcassets */,
+				5209827D2F1ACFC000391F71 /* DesignSystem.swift */,
+				A5000002 /* KorEngTranslator */,
+				A5000007 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A5000002 /* KorEngTranslator */ = {
+			isa = PBXGroup;
+			children = (
+				5209826A2F1ABAA900391F71 /* Fonts */,
+				A5000003 /* App */,
+				A5000004 /* Views */,
+				A5000005 /* Audio */,
+				A5000006 /* Network */,
+				A2000008 /* Info.plist */,
+			);
+			path = KorEngTranslator;
+			sourceTree = "<group>";
+		};
+		A5000003 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				A2000001 /* KorEngTranslatorApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		A5000004 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				5209828C2F1EDEB800391F71 /* Components */,
+				520982832F1C728C00391F71 /* PairingFlow.swift */,
+				520982292F1AB50100391F71 /* WelcomeScreenLangSelect.swift */,
+				A2000002 /* ContentView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		A5000005 /* Audio */ = {
+			isa = PBXGroup;
+			children = (
+				A2000003 /* AudioSessionManager.swift */,
+				A2000004 /* AudioCaptureService.swift */,
+				A2000005 /* AudioPlaybackService.swift */,
+			);
+			path = Audio;
+			sourceTree = "<group>";
+		};
+		A5000006 /* Network */ = {
+			isa = PBXGroup;
+			children = (
+				A2000006 /* WebSocketManager.swift */,
+				A2000007 /* MessageTypes.swift */,
+			);
+			path = Network;
+			sourceTree = "<group>";
+		};
+		A5000007 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A3000001 /* KorEngTranslator.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A6000001 /* KorEngTranslator */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A7000003 /* Build configuration list for PBXNativeTarget "KorEngTranslator" */;
+			buildPhases = (
+				A6000002 /* Sources */,
+				A4000001 /* Frameworks */,
+				A6000003 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				5209828C2F1EDEB800391F71 /* Components */,
+			);
+			name = KorEngTranslator;
+			productName = KorEngTranslator;
+			productReference = A3000001 /* KorEngTranslator.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A8000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 2620;
+				TargetAttributes = {
+					A6000001 = {
+						CreatedOnToolsVersion = 15.0;
+					};
+				};
+			};
+			buildConfigurationList = A7000001 /* Build configuration list for PBXProject "KorEngTranslator" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = A5000001;
+			productRefGroup = A5000007 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A6000001 /* KorEngTranslator */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A6000003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5209826B2F1ABAA900391F71 /* PPEditorialNew-Bold.otf in Resources */,
+				5209826C2F1ABAA900391F71 /* Pretendard-Regular.otf in Resources */,
+				5209826D2F1ABAA900391F71 /* Geist-Bold.ttf in Resources */,
+				5209826E2F1ABAA900391F71 /* Geist-SemiBold.ttf in Resources */,
+				520982822F1B525600391F71 /* Assets.xcassets in Resources */,
+				5209826F2F1ABAA900391F71 /* Geist-Medium.ttf in Resources */,
+				520982702F1ABAA900391F71 /* Geist-Regular.ttf in Resources */,
+				520982712F1ABAA900391F71 /* PPEditorialNew-Regular.otf in Resources */,
+				520982722F1ABAA900391F71 /* PPEditorialNew-Italic.otf in Resources */,
+				520982732F1ABAA900391F71 /* Pretendard-Bold.otf in Resources */,
+				520982742F1ABAA900391F71 /* Pretendard-SemiBold.otf in Resources */,
+				520982752F1ABAA900391F71 /* Pretendard-Medium.otf in Resources */,
+				520982762F1ABAA900391F71 /* PPEditorialNew-BoldItalic.otf in Resources */,
+				5209827A2F1AC26200391F71 /* NotoSerifKR-Variable.ttf in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A6000002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1000001 /* KorEngTranslatorApp.swift in Sources */,
+				A1000002 /* ContentView.swift in Sources */,
+				520982842F1C728C00391F71 /* PairingFlow.swift in Sources */,
+				A1000003 /* AudioSessionManager.swift in Sources */,
+				5209827E2F1ACFC000391F71 /* DesignSystem.swift in Sources */,
+				A1000004 /* AudioCaptureService.swift in Sources */,
+				A1000005 /* AudioPlaybackService.swift in Sources */,
+				A1000006 /* WebSocketManager.swift in Sources */,
+				5209822A2F1AB50100391F71 /* WelcomeScreenLangSelect.swift in Sources */,
+				A1000007 /* MessageTypes.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		A9000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = AQTF3J76VW;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		A9000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = AQTF3J76VW;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		A9000003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = KorEngTranslator/Info.plist;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "This app needs access to your microphone to capture speech for real-time translation between Korean and English.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.translator.KorEngTranslator;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		A9000004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = KorEngTranslator/Info.plist;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "This app needs access to your microphone to capture speech for real-time translation between Korean and English.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.translator.KorEngTranslator;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A7000001 /* Build configuration list for PBXProject "KorEngTranslator" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A9000001 /* Debug */,
+				A9000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A7000003 /* Build configuration list for PBXNativeTarget "KorEngTranslator" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A9000003 /* Debug */,
+				A9000004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A8000001 /* Project object */;
+}
