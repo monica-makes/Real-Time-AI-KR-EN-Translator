@@ -47,3 +47,5 @@ test_audio/
 # OS
 .DS_Store
 Thumbs.db
+node_modules/
+.build/
