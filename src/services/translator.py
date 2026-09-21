@@ -145,7 +145,7 @@ class TranslatorService:
             full_translation = []
 
             async with self._client.messages.stream(
-                model="claude-sonnet-4-20250514",
+                model="claude-sonnet-5",
                 max_tokens=200,
                 system=system_prompt,
                 messages=[{"role": "user", "content": f"Translate: {text}"}]

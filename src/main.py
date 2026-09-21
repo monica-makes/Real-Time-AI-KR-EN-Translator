@@ -422,8 +422,11 @@ class BidirectionalOrchestrator:
         """Send audio data with direction prefix, routing to partner if in a room."""
         import base64
 
-        # If in a room, route audio to the appropriate partner
-        if self.room:
+        # If in a room WITH a partner, route audio to that partner.
+        # Solo speaker (no partner socket yet) falls through to the self-send
+        # branch below so she hears her own translation.
+        partner_lang = "en" if msg.direction.value == "ko_to_en" else "ko"
+        if self.room and self.room.participants.get(partner_lang) is not None:
             # The direction tells us which pipeline produced this audio:
             # - ko_to_en output goes to the English speaker
             # - en_to_ko output goes to the Korean speaker
