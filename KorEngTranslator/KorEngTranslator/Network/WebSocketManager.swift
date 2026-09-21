@@ -87,7 +87,7 @@ class WebSocketManager: ObservableObject {
     private var userLanguage: UserLanguage = .english
 
     // Default backend URL
-    private static let defaultURL = "ws://192.168.1.169:8000/ws/translate"
+    private static let defaultURL = "ws://localhost:8001/ws/translate"
 
     // MARK: - Computed Properties
 
@@ -512,10 +512,11 @@ class WebSocketManager: ObservableObject {
             print("[WebSocketManager] Translation: \(msg.translated)")
             lastTranslation = msg.translated
 
-            // Check if this is PARTNER's speech translated for me
+            // Check if this is PARTNER's speech translated for me.
+            // Solo (no partner connected): show my own translation instead.
             if let directionStr = msg.direction,
                let direction = TranslationDirection(rawValue: directionStr),
-               direction == partnerOutputDirection {
+               direction == partnerOutputDirection || !isPartnerConnected {
                 onPartnerTranslation?(msg.original ?? "", msg.translated)
             }
 

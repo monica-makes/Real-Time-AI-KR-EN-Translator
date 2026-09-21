@@ -80,6 +80,12 @@ class AudioCaptureService: ObservableObject {
 
         print("[AudioCaptureService] Input format: \(inputFormat)")
 
+        // Mic permission not granted yet -> 0Hz/0ch format; installTap would raise
+        // an uncatchable ObjC exception. Turn it into a thrown Swift error.
+        guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
+            throw AudioCaptureError.invalidFormat
+        }
+
         // Create target format (16kHz, mono, PCM float for processing)
         guard let targetFormat = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,
