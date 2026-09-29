@@ -8,10 +8,15 @@ import time
 import pytest
 
 from src.config import Settings
-from src.models import TranslationDirection
+from src.models import (
+    TranslationDirection,
+    ERROR_CODE_TRANSLATION_FAILED,
+    ERROR_CODE_TRANSLATION_REFUSED,
+)
 from src.pipelines import KrToEnPipeline, EnToKrPipeline
 from src.pipelines.base import WordBoundaryPhraseBuffer
 from src.services.stt import STTResult
+from src.services.translator import TranslationRefused
 from src.session.context import SharedTranslationContext
 
 MP3_CHUNKS = [b"ID3\x04\x00", b"\xff\xfb\x90\x00frame-1", b"\xff\xfb\x90\x00frame-2"]
@@ -101,6 +106,15 @@ class FailingTranslator:
         raise RuntimeError("translation stream dropped")
 
 
+class RefusingTranslator:
+    """Streams a first phrase, then Claude's stop_reason turns out to be a refusal."""
+
+    async def translate_stream(self, text, direction, context, **kwargs):
+        yield "I can't help,"
+        yield " sorry"
+        raise TranslationRefused("policy")
+
+
 class FakeTTS:
     """Yields fixed audio chunks for every phrase."""
 
@@ -124,17 +138,37 @@ class FailingTTS:
 
 def make_pipeline(kind, stt=None, translator=None, tts=None):
     """Build a pipeline wired to fakes; returns (pipeline, audio_out, translations)."""
+    pipeline, audio_out, translations, _ = make_pipeline_with_events(kind, stt, translator, tts)
+    return pipeline, audio_out, translations
+
+
+def make_pipeline_with_events(kind, stt=None, translator=None, tts=None):
+    """
+    Like make_pipeline, also returning every emitted message in order.
+
+    events holds (kind, message) for finals, translations, audio and failures.
+    """
     pipeline_cls = PIPELINES[kind][0]
-    audio_out, translations = [], []
+    audio_out, translations, events = [], [], []
+
+    def record(name, sink=None):
+        def callback(msg):
+            events.append((name, msg))
+            if sink is not None:
+                sink.append(msg)
+        return callback
+
     pipeline = pipeline_cls(
         context=SharedTranslationContext(),
         stt=stt or FakeSTT(),
         translator=translator or FakeTranslator(),
         tts=tts or FakeTTS(MP3_CHUNKS),
-        on_translation=translations.append,
-        on_audio=audio_out.append,
+        on_final=record("final"),
+        on_translation=record("translation", translations),
+        on_audio=record("audio", audio_out),
+        on_translation_failed=record("failed"),
     )
-    return pipeline, audio_out, translations
+    return pipeline, audio_out, translations, events
 
 
 @pytest.mark.asyncio
@@ -442,6 +476,101 @@ def test_phrase_natural_breaks_unchanged():
     buffer._buffer_start -= 1.0
     assert buffer.add_token(" soon ") == "see you soon "
     assert buffer.is_empty
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", PIPELINES)
+async def test_refused_translation_reports_the_segment(kind):
+    """A refusal emits no translation but one error naming the segment, then the buffer is clean."""
+    pipeline, audio_out, translations, events = make_pipeline_with_events(kind, translator=RefusingTranslator())
+    source = PIPELINES[kind][2]
+
+    await pipeline._translate_and_speak(source, "seg-r")
+
+    assert translations == []
+    failures = [msg for name, msg in events if name == "failed"]
+    assert len(failures) == 1
+    error = failures[0]
+    assert error.type == "error"
+    assert error.code == ERROR_CODE_TRANSLATION_REFUSED
+    assert error.segment_id == "seg-r"
+    assert error.original == source
+    assert error.direction == PIPELINES[kind][1]
+    assert error.recoverable
+    assert "rephrase" in error.message
+    assert pipeline.phrase_buffer.is_empty
+    # The first phrase had already been spoken before the refusal arrived
+    assert [a.direction for a in audio_out] == [PIPELINES[kind][1]]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", PIPELINES)
+async def test_dropped_translation_stream_reports_the_segment(kind):
+    """A translation call that breaks mid-stream is reported too, with its own code."""
+    pipeline, _, translations, events = make_pipeline_with_events(kind, translator=FailingTranslator())
+
+    await pipeline._translate_and_speak(PIPELINES[kind][2], "seg-f")
+
+    assert translations == []
+    failures = [msg for name, msg in events if name == "failed"]
+    assert [(e.code, e.segment_id) for e in failures] == [(ERROR_CODE_TRANSLATION_FAILED, "seg-f")]
+    assert "try again" in failures[0].message
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", PIPELINES)
+async def test_successful_translation_reports_no_failure(kind):
+    """The happy path emits exactly one translation and no error."""
+    pipeline, _, translations, events = make_pipeline_with_events(kind)
+
+    await pipeline._translate_and_speak(PIPELINES[kind][2], "seg-ok")
+
+    assert [t.segment_id for t in translations] == ["seg-ok"]
+    assert translations[0].translated == "Hello there."
+    assert not [msg for name, msg in events if name == "failed"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", PIPELINES)
+async def test_translation_text_is_emitted_before_trailing_phrase_audio(kind):
+    """The text goes out as soon as the stream ends, ahead of the last phrase's TTS clip."""
+    # "Hello there," is released at the comma; " see you" waits for the final flush
+    translator = FakeTranslator(tokens=("Hello there,", " see you"), delay_s=0)
+    pipeline, audio_out, translations, events = make_pipeline_with_events(kind, translator=translator)
+
+    await pipeline._translate_and_speak(PIPELINES[kind][2], "seg-o")
+
+    assert translations[0].translated == "Hello there, see you"
+    assert len(audio_out) == 2
+    order = [name for name, _ in events]
+    assert order == ["audio", "translation", "audio"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", PIPELINES)
+async def test_flushed_trailing_text_gets_a_transcript_final(kind):
+    """Text flushed at the end of an utterance is announced with the same segment_id as its translation."""
+    first_unpunctuated, _, buffered = UNPUNCTUATED[kind]
+    pipeline, _, translations, events = make_pipeline_with_events(kind)
+    await pipeline.start()
+    try:
+        # Feed text that no detector releases on its own (no sentence end)
+        if kind == "kr_to_en":
+            await pipeline._process_words(buffered, 0)
+        else:
+            for word in buffered.split():
+                assert pipeline.sentence_detector.add_word(word, 0) is None
+        await pipeline._flush_remaining()
+    finally:
+        await pipeline.stop()
+
+    finals = [msg for name, msg in events if name == "final"]
+    assert len(translations) == 1
+    assert [f.segment_id for f in finals] == [translations[0].segment_id]
+    assert finals[0].text.replace(" ", "") == buffered.replace(" ", "")
+    assert finals[0].direction == PIPELINES[kind][1]
+    order = [name for name, _ in events]
+    assert order.index("final") < order.index("translation")
 
 
 class FakeWebSocket:

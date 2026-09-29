@@ -92,17 +92,31 @@ cp .env.example .env
 
 ## WebSocket Protocol
 
-### Start Session
+### `/ws/translate` - rooms
+
+A conversation is a **room** with one Korean and one English speaker. Each phone opens its own
+socket and starts a session with its language; the second phone to name the same `room_id`
+joins the first.
 
 ```json
 {
-  "type": "session_start",
-  "directions": ["ko_to_en", "en_to_ko"],
-  "honorific_mode": false
+  "type": "start_session",
+  "pairing_mode": "manual",
+  "user_language": "ko",
+  "room_id": "ABC123",
+  "config": {"honorific_mode": false}
 }
 ```
 
+The server answers `{"type": "session_started", "room_id": "ABC123", "paired_via": "manual"}`
+and, once both are in, `{"type": "partner_joined"}` to both (`{"type": "partner_left"}` when one
+leaves). Without `room_id` the server creates a room and returns its id. The legacy form
+(`"directions": ["ko_to_en"]`, no `user_language`) still starts a solo session.
+
 ### Send Audio
+
+16 kHz mono PCM16, tagged with the speaker's direction (`ko_to_en` for the Korean speaker,
+`en_to_ko` for the English speaker):
 
 ```json
 {
@@ -132,46 +146,73 @@ cp .env.example .env
 
 ### Server Responses
 
-**Interim Transcript:**
+`direction` is always the **speaker's** direction. In a room, transcripts, translations and
+untranslatable-segment errors go to **both** phones (so a chat can show both sides); audio goes
+to the listener only; classifier and gender messages stay with the speaker. Solo, the speaker
+gets everything including the audio.
+
+**Transcripts:**
 ```json
-{
-  "type": "transcript_interim",
-  "direction": "ko_to_en",
-  "text": "안녕하세..."
-}
+{"type": "transcript_interim", "direction": "ko_to_en", "text": "안녕하세..."}
+{"type": "transcript_final", "direction": "ko_to_en", "text": "안녕하세요.", "segment_id": "30b9835c"}
 ```
 
-**Classifier Decision (KO→EN only):**
-```json
-{
-  "type": "classifier_decision",
-  "clause": "그 영화를 보고",
-  "connector": "고",
-  "decision": "wait"
-}
-```
-
-**Translation Result:**
+**Translation** (same `segment_id` as its transcript; sent as soon as the text is complete,
+before the last audio clip):
 ```json
 {
   "type": "translation",
   "direction": "ko_to_en",
-  "original": "안녕하세요",
-  "translated": "Hello",
-  "segment_id": "abc123",
+  "original": "안녕하세요.",
+  "translated": "Hello.",
+  "segment_id": "30b9835c",
   "honorific": null
 }
 ```
 
-**Audio Output:**
+**Audio** (one complete MP3 per phrase, base64 in JSON):
+```json
+{"type": "audio", "direction": "ko_to_en", "format": "mp3", "data": "<base64 mp3>"}
+```
+
+**Segment that couldn't be translated** (Claude declined, or the translation call broke);
+both phones receive it:
 ```json
 {
-  "type": "audio_out",
+  "type": "error",
   "direction": "ko_to_en",
-  "format": "mp3"
+  "message": "Couldn't translate that - please rephrase.",
+  "recoverable": true,
+  "code": "translation_refused",
+  "segment_id": "30b9835c",
+  "original": "..."
 }
-// Followed by binary audio data
 ```
+`code` is `translation_refused` or `translation_failed`. Other errors (`"No active session"`,
+invalid direction, ...) have no `code` and go to the speaker only.
+
+**Classifier Decision (KO→EN only, speaker only):**
+```json
+{"type": "classifier_decision", "clause": "그 영화를 보고", "connector": "고", "decision": "wait"}
+```
+
+### `/ws/pair` - finding a partner
+
+Connect with `?direction=ko_to_en` or `?direction=en_to_ko` (`kr_to_en` / `en_to_kr` are
+accepted too) and `?mode=wifi` (default) or `?mode=manual`.
+
+- **Wi-Fi mode**: clients on the same network with opposite directions are introduced
+  (`searching`, `partner_connected`, `partner_ready`); send
+  `{"type": "headphone_status", "connected": true}` - once both have headphones both get
+  `{"type": "matched", "room_id": "..."}`. After 6 s without a match the client gets one
+  `{"type": "no_match", "room_code": "123456"}` and may keep waiting for a manual join.
+- **Manual mode**: the creator sends `{"type": "create_room", "room_code": "208098"}` (answer
+  `room_created`, or `create_failed` if another live creator holds the code); the partner sends
+  `{"type": "join_room", "room_code": "208098"}`. Both get `matched` with the same `room_id`, or
+  the joiner gets `{"type": "join_failed", "reason": "unknown_code"}` and can retry. A code is
+  single-use and dies when its creator disconnects.
+
+Both phones then open `/ws/translate` with that `room_id`.
 
 ## Usage Scenarios
 

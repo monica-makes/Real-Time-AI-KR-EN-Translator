@@ -22,6 +22,8 @@ from .models import (
     TranslationResult,
     AudioOut,
     ErrorMessage,
+    ERROR_CODE_TRANSLATION_REFUSED,
+    ERROR_CODE_TRANSLATION_FAILED,
     GenderDetected,
 )
 from .session import Session, SessionManager, SharedTranslationContext
@@ -57,10 +59,24 @@ class ConversationRoom:
         self.orchestrators[language] = orchestrator
         logger.info(f"[Room {self.room_id}] Added {language} participant")
 
+    @staticmethod
+    def partner_language(my_language: str) -> str:
+        """The other participant's language."""
+        return "ko" if my_language == "en" else "en"
+
+    @staticmethod
+    def listener_language(direction: str) -> str:
+        """
+        Language of the participant who receives a direction's output.
+
+        "ko_to_en" output (English text and speech) is for the English speaker;
+        "en_to_ko" output is for the Korean speaker.
+        """
+        return "en" if direction == "ko_to_en" else "ko"
+
     def get_partner_socket(self, my_language: str) -> Optional[WebSocket]:
         """Get the WebSocket of the partner (opposite language)."""
-        partner_lang = "ko" if my_language == "en" else "en"
-        return self.participants.get(partner_lang)
+        return self.participants.get(self.partner_language(my_language))
 
     def remove_participant(self, language: str, websocket: Optional[WebSocket] = None) -> bool:
         """
@@ -87,14 +103,31 @@ class ConversationRoom:
         """Check if both participants are connected."""
         return "en" in self.participants and "ko" in self.participants
 
+    async def send_to(self, language: str, message: dict) -> bool:
+        """
+        Deliver a JSON message to a participant.
+
+        Goes through that participant's orchestrator, whose send lock serializes
+        it with the pipeline output already flowing to the same socket. Falls
+        back to the raw socket only when no orchestrator is registered.
+        Returns False if there is no such participant.
+        """
+        orchestrator = self.orchestrators.get(language)
+        if orchestrator is not None:
+            await orchestrator._send_json(message)
+            return True
+        socket = self.participants.get(language)
+        if socket is None:
+            return False
+        try:
+            await socket.send_text(json.dumps(message))
+        except Exception as e:
+            logger.error(f"[Room {self.room_id}] Error sending to {language}: {e}")
+        return True
+
     async def notify_partner(self, my_language: str, message: dict):
         """Send a message to the partner."""
-        partner_socket = self.get_partner_socket(my_language)
-        if partner_socket:
-            try:
-                await partner_socket.send_text(json.dumps(message))
-            except Exception as e:
-                logger.error(f"[Room {self.room_id}] Error notifying partner: {e}")
+        await self.send_to(self.partner_language(my_language), message)
 
     async def route_translation_output(self, direction: str, audio_data: bytes):
         """
@@ -104,22 +137,16 @@ class ConversationRoom:
         - "ko_to_en" output goes to the English speaker (they hear English translation of Korean)
         - "en_to_ko" output goes to the Korean speaker (they hear Korean translation of English)
         """
-        # Determine who should receive this audio
-        target_lang = "en" if direction == "ko_to_en" else "ko"
-        target_socket = self.participants.get(target_lang)
-
-        if target_socket:
-            try:
-                import base64
-                await target_socket.send_text(json.dumps({
-                    "type": "audio",
-                    "direction": direction,
-                    "format": "mp3",
-                    "data": base64.b64encode(audio_data).decode()
-                }))
-                logger.debug(f"[Room {self.room_id}] Routed {len(audio_data)} bytes to {target_lang}")
-            except Exception as e:
-                logger.error(f"[Room {self.room_id}] Error routing audio: {e}")
+        import base64
+        target_lang = self.listener_language(direction)
+        delivered = await self.send_to(target_lang, {
+            "type": "audio",
+            "direction": direction,
+            "format": "mp3",
+            "data": base64.b64encode(audio_data).decode(),
+        })
+        if delivered:
+            logger.debug(f"[Room {self.room_id}] Routed {len(audio_data)} bytes to {target_lang}")
 
 
 # Room storage
@@ -270,6 +297,22 @@ async def health_check():
     }
 
 
+def partner_should_see(message: dict) -> bool:
+    """
+    Whether a pipeline message is part of the conversation the partner sees too.
+
+    Transcripts and translations are what the chat shows for both sides. Of the
+    errors, only "this segment couldn't be translated" concerns the listener;
+    classifier and gender details stay with the speaker.
+    """
+    msg_type = message.get("type")
+    if msg_type in ("transcript_interim", "transcript_final", "translation"):
+        return True
+    if msg_type == "error":
+        return message.get("code") in (ERROR_CODE_TRANSLATION_REFUSED, ERROR_CODE_TRANSLATION_FAILED)
+    return False
+
+
 class BidirectionalOrchestrator:
     """Coordinates both pipelines within a session."""
 
@@ -321,6 +364,7 @@ class BidirectionalOrchestrator:
                 on_classifier=lambda msg: self._schedule_send(msg),
                 on_translation=lambda msg: self._schedule_send(msg),
                 on_audio=lambda msg: self._schedule_send_audio(msg),
+                on_translation_failed=lambda msg: self._schedule_send(msg),
             )
 
         if session.has_direction(TranslationDirection.EN_TO_KO):
@@ -335,6 +379,7 @@ class BidirectionalOrchestrator:
                 on_final=lambda msg: self._schedule_send(msg),
                 on_translation=lambda msg: self._schedule_send(msg),
                 on_audio=lambda msg: self._schedule_send_audio(msg),
+                on_translation_failed=lambda msg: self._schedule_send(msg),
             )
 
     async def start(self) -> None:
@@ -412,9 +457,36 @@ class BidirectionalOrchestrator:
             self.tts.set_gender(gender_override)
             logger.info(f"Updated gender override to: {gender_override}")
 
+    def _partner_listening_to(self, direction: Optional[str]) -> Optional["BidirectionalOrchestrator"]:
+        """
+        The room partner who receives this direction's output, or None.
+
+        None when solo (no room, or no partner connected yet) and when the
+        direction's listener is this user (a debug language override sends the
+        "wrong" direction); those cases fall back to sending to ourselves.
+        """
+        if self.room is None or not direction:
+            return None
+        partner = self.room.orchestrators.get(ConversationRoom.listener_language(direction))
+        if partner is None or partner is self:
+            return None
+        return partner
+
     def _schedule_send(self, msg) -> None:
-        """Schedule a JSON message to be sent."""
-        asyncio.create_task(self._send_json(msg.model_dump()))
+        """
+        Schedule a JSON message to the client, and to the room partner when it is
+        part of the conversation (transcripts, translations, untranslatable segments).
+
+        The speaker keeps receiving everything so the chat can show both sides.
+        The partner's copy goes through the partner's orchestrator, so it takes
+        that socket's send lock instead of racing with the partner's own output.
+        """
+        data = msg.model_dump()
+        asyncio.create_task(self._send_json(data))
+        if partner_should_see(data):
+            partner = self._partner_listening_to(data.get("direction"))
+            if partner is not None:
+                asyncio.create_task(partner._send_json(data))
 
     def _schedule_send_audio(self, msg: AudioOut) -> None:
         """Schedule audio data to be sent."""
@@ -429,35 +501,27 @@ class BidirectionalOrchestrator:
                 logger.error(f"Error sending JSON: {e}")
 
     async def _send_audio(self, msg: AudioOut) -> None:
-        """Send audio data with direction prefix, routing to partner if in a room."""
+        """
+        Send translated audio to whoever should hear it.
+
+        In a room with a partner that is the listener of this direction, through
+        the partner's send lock. A solo speaker (no partner socket yet) hears
+        her own translation instead.
+        """
         import base64
 
-        # If in a room WITH a partner, route audio to that partner.
-        # Solo speaker (no partner socket yet) falls through to the self-send
-        # branch below so she hears her own translation.
-        partner_lang = "en" if msg.direction.value == "ko_to_en" else "ko"
-        if self.room and self.room.participants.get(partner_lang) is not None:
-            # The direction tells us which pipeline produced this audio:
-            # - ko_to_en output goes to the English speaker
-            # - en_to_ko output goes to the Korean speaker
-            await self.room.route_translation_output(
-                msg.direction.value,
-                msg.data
-            )
+        payload = {
+            "type": "audio",
+            "direction": msg.direction.value,
+            "format": msg.format,
+            "data": base64.b64encode(msg.data).decode(),
+        }
+        partner = self._partner_listening_to(msg.direction.value)
+        if partner is not None:
+            await partner._send_json(payload)
+            logger.debug(f"[Room {self.room.room_id}] Routed {len(msg.data)} bytes to {partner.user_language}")
             return
-
-        # Legacy mode: send to current websocket
-        async with self._send_lock:
-            try:
-                # Send as JSON with base64 encoded audio for consistency
-                await self.ws.send_text(json.dumps({
-                    "type": "audio",
-                    "direction": msg.direction.value,
-                    "format": msg.format,
-                    "data": base64.b64encode(msg.data).decode()
-                }))
-            except Exception as e:
-                logger.error(f"Error sending audio: {e}")
+        await self._send_json(payload)
 
 
 @app.websocket("/ws/translate")
@@ -676,13 +740,9 @@ async def websocket_translate(websocket: WebSocket):
                             })
 
                             # Notify partner if they're already in the room
-                            partner_socket = room.get_partner_socket(user_language)
-                            if partner_socket:
-                                try:
-                                    await partner_socket.send_text(json.dumps({"type": "partner_joined"}))
-                                    await send_json({"type": "partner_joined"})
-                                except:
-                                    pass
+                            if room.get_partner_socket(user_language) is not None:
+                                await room.notify_partner(user_language, {"type": "partner_joined"})
+                                await send_json({"type": "partner_joined"})
 
                         # ========== LEGACY MODE (backward compatibility) ==========
                         else:
@@ -821,13 +881,8 @@ async def websocket_translate(websocket: WebSocket):
             # Remove from room, unless the user already re-joined on a newer socket
             # (e.g. mic tap right after Stop while this handler was still in stop())
             if room.remove_participant(user_language, websocket):
-                # Notify partner
-                partner_socket = room.get_partner_socket(user_language)
-                if partner_socket:
-                    try:
-                        await partner_socket.send_text(json.dumps({"type": "partner_left"}))
-                    except:
-                        pass
+                # Notify partner (through their send lock; errors are logged there)
+                await room.notify_partner(user_language, {"type": "partner_left"})
 
             # Clean up empty rooms
             if room.is_empty() and rooms.get(room.room_id) is room:
@@ -847,7 +902,22 @@ async def websocket_translate(websocket: WebSocket):
 
 # Store waiting clients for pairing (by IP network)
 pairing_clients: dict[str, dict] = {}  # ip_prefix -> {client_id: {websocket, direction, headphones, ip}}
-pairing_rooms: dict[str, dict] = {}    # room_code -> {clients: [...], room_id: str}
+pairing_rooms: dict[str, dict] = {}    # room_code -> {creator: client_data, room_id: str}
+
+# How long a Wi-Fi pairing client waits for a partner before falling back to a manual code
+PAIRING_MATCH_TIMEOUT_S = 6.0
+
+# The onboarding screens say "en_to_kr" / "kr_to_en"; the protocol says "en_to_ko" / "ko_to_en"
+PAIRING_DIRECTION_ALIASES = {
+    "en_to_kr": "en_to_ko",
+    "kr_to_en": "ko_to_en",
+}
+
+
+def normalize_pairing_direction(direction: str) -> str:
+    """Map onboarding direction spellings onto the protocol's."""
+    return PAIRING_DIRECTION_ALIASES.get(direction, direction)
+
 
 def get_ip_prefix(ip: str) -> str:
     """Extract network prefix from IP for WiFi matching (first 3 octets)."""
@@ -867,28 +937,42 @@ def generate_room_id() -> str:
     return str(uuid.uuid4())[:8].upper()
 
 @app.websocket("/ws/pair")
-async def websocket_pair(websocket: WebSocket, direction: str = "ko_to_en"):
+async def websocket_pair(websocket: WebSocket, direction: str = "ko_to_en", mode: str = "wifi"):
     """
     WebSocket endpoint for pairing two clients.
 
     Protocol:
-    - Client connects with ?direction=ko_to_en or ?direction=en_to_ko
+    - Client connects with ?direction=ko_to_en or ?direction=en_to_ko (the
+      onboarding spellings en_to_kr / kr_to_en are accepted too) and
+      ?mode=wifi (default: match by Wi-Fi network) or ?mode=manual (codes only)
     - Client sends {"type": "headphone_status", "connected": true/false}
+    - Client sends {"type": "create_room", "room_code": "123456"} to offer a code
+      to a partner (manual pairing: the creator shows the code / QR)
+    - Client sends {"type": "join_room", "room_code": "123456"} to pair with the
+      client that created (or was assigned) that code
     - Server sends status updates:
-      - {"type": "searching"} - looking for partner
+      - {"type": "searching"} - looking for a Wi-Fi partner
       - {"type": "partner_connected", "headphones": bool} - partner found
       - {"type": "partner_ready"} - partner has headphones
       - {"type": "matched", "room_id": "..."} - both ready, can start
       - {"type": "no_match", "room_code": "..."} - timeout, use manual pairing
+      - {"type": "room_created", "room_code": "..."} - the code is registered
+      - {"type": "create_failed", "room_code": "...", "reason": "code_in_use"}
+      - {"type": "join_failed", "room_code": "...", "reason": "unknown_code"}
+
+    Both matched clients then open /ws/translate with the same room_id.
     """
     await websocket.accept()
+
+    direction = normalize_pairing_direction(direction)
+    wifi_mode = mode != "manual"
 
     # Get client IP
     client_ip = websocket.client.host if websocket.client else "unknown"
     ip_prefix = get_ip_prefix(client_ip)
     client_id = f"{client_ip}:{id(websocket)}"
 
-    logger.info(f"Pairing connection from {client_ip} (prefix: {ip_prefix}), direction: {direction}")
+    logger.info(f"Pairing connection from {client_ip} (prefix: {ip_prefix}), direction: {direction}, mode: {mode}")
 
     # Initialize client data
     client_data = {
@@ -897,16 +981,16 @@ async def websocket_pair(websocket: WebSocket, direction: str = "ko_to_en"):
         "headphones": False,
         "ip": client_ip,
         "ip_prefix": ip_prefix,
+        "done": asyncio.Event(),  # Set (by either side) once this client is matched
     }
 
-    # Add to waiting clients
-    if ip_prefix not in pairing_clients:
-        pairing_clients[ip_prefix] = {}
-    pairing_clients[ip_prefix][client_id] = client_data
+    # Add to waiting clients (Wi-Fi matching only)
+    if wifi_mode:
+        pairing_clients.setdefault(ip_prefix, {})[client_id] = client_data
 
     partner_ws: Optional[WebSocket] = None
     partner_id: Optional[str] = None
-    room_code: Optional[str] = None
+    my_room_code: Optional[str] = None  # Code this client created (or was assigned on timeout)
     matched = False
 
     async def send_json(data: dict):
@@ -941,6 +1025,10 @@ async def websocket_pair(websocket: WebSocket, direction: str = "ko_to_en"):
         """Check if both clients have headphones and are ready."""
         nonlocal matched
 
+        # The partner's handler may have matched us while we were sending; one room is enough
+        if matched or client_data["done"].is_set():
+            return True
+
         if partner_id and ip_prefix in pairing_clients:
             partner_data = pairing_clients[ip_prefix].get(partner_id)
             if partner_data and client_data["headphones"] and partner_data["headphones"]:
@@ -950,115 +1038,167 @@ async def websocket_pair(websocket: WebSocket, direction: str = "ko_to_en"):
 
                 await send_json({"type": "matched", "room_id": room_id})
                 await send_to_partner({"type": "matched", "room_id": room_id})
+                partner_data["done"].set()
 
                 logger.info(f"Pairing matched! Room: {room_id}, clients: {client_id}, {partner_id}")
                 return True
         return False
 
+    def register_room_code(code: str) -> bool:
+        """
+        Offer a code for a partner to join; False if another live creator holds it.
+
+        A client offers one code at a time: a new code replaces the one it offered
+        before, so no stale code stays joinable after the client moves on.
+        """
+        nonlocal my_room_code
+        existing = pairing_rooms.get(code)
+        if existing is not None and existing["creator"] is not client_data:
+            return False
+        if (
+            my_room_code is not None
+            and my_room_code != code
+            and pairing_rooms.get(my_room_code, {}).get("creator") is client_data
+        ):
+            del pairing_rooms[my_room_code]
+        pairing_rooms[code] = {"creator": client_data, "room_id": generate_room_id()}
+        my_room_code = code
+        return True
+
+    receive_task: Optional[asyncio.Task] = None
+    matched_by_partner = asyncio.create_task(client_data["done"].wait())
+    loop = asyncio.get_running_loop()
+    # Wi-Fi matching gives up once; afterwards the socket stays open for manual codes
+    match_deadline = loop.time() + PAIRING_MATCH_TIMEOUT_S if wifi_mode else None
+
     try:
-        # Send initial searching status
-        await send_json({"type": "searching"})
+        if wifi_mode:
+            # Send initial searching status
+            await send_json({"type": "searching"})
 
-        # Check for existing partner
-        if await check_for_partner():
-            partner_data = pairing_clients[ip_prefix].get(partner_id)
-            await send_json({
-                "type": "partner_connected",
-                "headphones": partner_data["headphones"] if partner_data else False
-            })
-            # Notify partner about us
-            await send_to_partner({
-                "type": "partner_connected",
-                "headphones": client_data["headphones"]
-            })
-
-        # Set up timeout for WiFi matching (6 seconds)
-        match_timeout = asyncio.create_task(asyncio.sleep(6))
+            # Check for existing partner
+            if await check_for_partner():
+                partner_data = pairing_clients[ip_prefix].get(partner_id)
+                await send_json({
+                    "type": "partner_connected",
+                    "headphones": partner_data["headphones"] if partner_data else False
+                })
+                # Notify partner about us
+                await send_to_partner({
+                    "type": "partner_connected",
+                    "headphones": client_data["headphones"]
+                })
 
         while not matched:
             try:
-                # Wait for message with timeout check
-                receive_task = asyncio.create_task(websocket.receive_text())
+                # One receive at a time: a receive that outlives the match timeout is
+                # kept, not cancelled, so no client message is lost
+                if receive_task is None:
+                    receive_task = asyncio.create_task(websocket.receive_text())
 
-                done, pending = await asyncio.wait(
-                    [receive_task, match_timeout],
-                    return_when=asyncio.FIRST_COMPLETED
+                timeout = None
+                if match_deadline is not None:
+                    timeout = max(0.0, match_deadline - loop.time())
+                done, _ = await asyncio.wait(
+                    {receive_task, matched_by_partner},
+                    timeout=timeout,
+                    return_when=asyncio.FIRST_COMPLETED,
                 )
 
-                if match_timeout in done and not matched:
-                    # Timeout - go to manual pairing
-                    room_code = generate_room_code()
-                    await send_json({"type": "no_match", "room_code": room_code})
-                    logger.info(f"Pairing timeout for {client_id}, room_code: {room_code}")
+                if matched_by_partner in done:
+                    # The partner's handler matched us (Wi-Fi match or someone joined our code)
+                    matched = True
+                    break
 
-                    # Store room code for manual joining
-                    pairing_rooms[room_code] = {
-                        "clients": [client_data],
-                        "room_id": generate_room_id()
-                    }
-
-                    # Cancel receive task and continue listening for manual join
-                    receive_task.cancel()
+                if receive_task not in done:
+                    # Wi-Fi timeout (fires once) - offer a code for manual pairing,
+                    # keeping one the client already registered with create_room
+                    match_deadline = None
+                    if my_room_code is None:
+                        for _ in range(5):  # a generated code could be another creator's
+                            if register_room_code(generate_room_code()):
+                                break
+                    await send_json({"type": "no_match", "room_code": my_room_code})
+                    logger.info(f"Pairing timeout for {client_id}, room_code: {my_room_code}")
                     continue
 
-                if receive_task in done:
-                    message = receive_task.result()
-                    data = json.loads(message)
-                    msg_type = data.get("type")
+                message = receive_task.result()
+                receive_task = None
+                data = json.loads(message)
+                msg_type = data.get("type")
 
-                    if msg_type == "headphone_status":
-                        client_data["headphones"] = data.get("connected", False)
-                        logger.info(f"Client {client_id} headphones: {client_data['headphones']}")
+                if msg_type == "headphone_status":
+                    client_data["headphones"] = data.get("connected", False)
+                    logger.info(f"Client {client_id} headphones: {client_data['headphones']}")
 
-                        # Notify partner
-                        if partner_ws:
-                            if client_data["headphones"]:
-                                await send_to_partner({"type": "partner_ready"})
-                            else:
-                                await send_to_partner({
-                                    "type": "partner_connected",
-                                    "headphones": False
-                                })
+                    # A partner who left is no partner: forget them so a new one can be found
+                    if partner_id and partner_id not in pairing_clients.get(ip_prefix, {}):
+                        partner_ws, partner_id = None, None
 
-                        # Check for partner if we don't have one
-                        if not partner_ws:
-                            if await check_for_partner():
-                                partner_data = pairing_clients[ip_prefix].get(partner_id)
-                                await send_json({
-                                    "type": "partner_connected",
-                                    "headphones": partner_data["headphones"] if partner_data else False
-                                })
-                                await send_to_partner({
-                                    "type": "partner_connected",
-                                    "headphones": client_data["headphones"]
-                                })
+                    # A partner who arrived after us hasn't been noticed yet: look first,
+                    # so the status below reaches them
+                    if wifi_mode and not partner_ws:
+                        if await check_for_partner():
+                            partner_data = pairing_clients[ip_prefix].get(partner_id)
+                            await send_json({
+                                "type": "partner_connected",
+                                "headphones": partner_data["headphones"] if partner_data else False
+                            })
 
-                        # Check if we can match
-                        await check_match()
+                    # Notify partner
+                    if partner_ws:
+                        if client_data["headphones"]:
+                            await send_to_partner({"type": "partner_ready"})
+                        else:
+                            await send_to_partner({
+                                "type": "partner_connected",
+                                "headphones": False
+                            })
 
-                    elif msg_type == "join_room":
-                        # Manual room joining
-                        join_code = data.get("room_code")
-                        if join_code in pairing_rooms:
-                            room_data = pairing_rooms[join_code]
-                            room_data["clients"].append(client_data)
+                    # Check if we can match
+                    await check_match()
 
-                            # Notify both clients
-                            room_id = room_data["room_id"]
-                            for c in room_data["clients"]:
-                                try:
-                                    await c["websocket"].send_text(json.dumps({
-                                        "type": "matched",
-                                        "room_id": room_id
-                                    }))
-                                except:
-                                    pass
+                elif msg_type == "create_room":
+                    # Manual pairing: the client shows this code for the partner to enter
+                    code = str(data.get("room_code", "")).strip()
+                    if not code:
+                        await send_json({"type": "create_failed", "room_code": code, "reason": "missing_code"})
+                    elif register_room_code(code):
+                        await send_json({"type": "room_created", "room_code": code})
+                        logger.info(f"Client {client_id} created room code {code}")
+                    else:
+                        await send_json({"type": "create_failed", "room_code": code, "reason": "code_in_use"})
 
-                            matched = True
-                            logger.info(f"Manual pairing joined! Room: {room_id}")
+                elif msg_type == "join_room":
+                    # Manual room joining
+                    join_code = str(data.get("room_code", "")).strip()
+                    room_data = pairing_rooms.get(join_code)
+                    if room_data is None or room_data["creator"] is client_data:
+                        await send_json({"type": "join_failed", "room_code": join_code, "reason": "unknown_code"})
+                        logger.info(f"Client {client_id} tried unknown room code {join_code}")
+                        continue
+
+                    # Notify both clients; the code is single-use
+                    del pairing_rooms[join_code]
+                    room_id = room_data["room_id"]
+                    creator = room_data["creator"]
+                    await send_json({"type": "matched", "room_id": room_id})
+                    try:
+                        await creator["websocket"].send_text(json.dumps({"type": "matched", "room_id": room_id}))
+                    except Exception as e:
+                        logger.error(f"Error notifying room creator: {e}")
+                    creator["done"].set()
+
+                    matched = True
+                    logger.info(f"Manual pairing joined! Room: {room_id}, code: {join_code}")
+
+                else:
+                    logger.warning(f"Unknown pairing message type: {msg_type}")
 
             except asyncio.CancelledError:
                 break
+            except WebSocketDisconnect:
+                raise
             except json.JSONDecodeError:
                 logger.warning("Invalid JSON in pairing message")
             except Exception as e:
@@ -1070,11 +1210,19 @@ async def websocket_pair(websocket: WebSocket, direction: str = "ko_to_en"):
     except Exception as e:
         logger.error(f"Pairing WebSocket error: {e}")
     finally:
+        for pending in (receive_task, matched_by_partner):
+            if pending is not None and not pending.done():
+                pending.cancel()
+
         # Clean up
         if ip_prefix in pairing_clients and client_id in pairing_clients[ip_prefix]:
             del pairing_clients[ip_prefix][client_id]
             if not pairing_clients[ip_prefix]:
                 del pairing_clients[ip_prefix]
+
+        # A code nobody joined dies with its creator
+        if my_room_code and pairing_rooms.get(my_room_code, {}).get("creator") is client_data:
+            del pairing_rooms[my_room_code]
 
         # Notify partner of disconnect
         if partner_ws and not matched:

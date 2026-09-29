@@ -72,6 +72,97 @@ enum LanguageOption: String, CaseIterable {
     }
 }
 
+// MARK: - Pairing Entry Mode
+
+/// What comes after picking a language: auto-pairing (find your partner on the same WiFi,
+/// falling back to the Create/Join choice if that fails), or the Create/Join "starter or joiner"
+/// choice straight away. Debug builds switch it from the Debug Controls; release always auto-pairs.
+enum PairingEntryMode: String, CaseIterable {
+    case autoPairing
+    case starterJoiner
+
+    static let storageKey = "debugPairingEntryMode"
+
+    static var current: PairingEntryMode {
+        #if DEBUG
+        return PairingEntryMode(rawValue: UserDefaults.standard.string(forKey: storageKey) ?? "") ?? .autoPairing
+        #else
+        return .autoPairing
+        #endif
+    }
+
+    var label: String {
+        switch self {
+        case .autoPairing: return "Auto-pair"
+        case .starterJoiner: return "Starter / Joiner"
+        }
+    }
+}
+
+#if DEBUG
+/// Debug picker for the pairing mode. The choice is remembered for the next language pick, and
+/// `onSelect` lets the current screen jump straight to the chosen mode's first screen.
+struct PairingModeDebugPicker: View {
+    var onDarkBackground = false
+    var onSelect: ((PairingEntryMode) -> Void)?
+
+    @AppStorage(PairingEntryMode.storageKey) private var mode: PairingEntryMode = .autoPairing
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("PAIRING MODE")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundColor(onDarkBackground ? .white.opacity(0.6) : .secondary)
+
+            HStack(spacing: 8) {
+                ForEach(PairingEntryMode.allCases, id: \.self) { option in
+                    Button(action: {
+                        mode = option
+                        onSelect?(option)
+                    }) {
+                        Text(option.label)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(mode == option ? .white : (onDarkBackground ? .white : .primary))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .frame(maxWidth: .infinity)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(mode == option ? Color.orange : Color.gray.opacity(onDarkBackground ? 0.35 : 0.2))
+                            )
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+            }
+        }
+    }
+}
+
+/// Debug Controls card for the Create/Join screen (styled like the pairing screen's panel)
+struct PairingModeDebugCard: View {
+    var onSelect: ((PairingEntryMode) -> Void)?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Image(systemName: "ladybug.fill")
+                    .foregroundColor(.orange)
+                Text("Debug Controls")
+                    .font(.system(size: 14, weight: .semibold))
+                Spacer()
+            }
+            PairingModeDebugPicker(onSelect: onSelect)
+        }
+        .padding(16)
+        .glassEffect(.regular, in: .rect(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+        )
+    }
+}
+#endif
+
 // MARK: - Welcome Screen Language Select
 
 struct WelcomeScreenLangSelect: View {
@@ -147,13 +238,25 @@ struct WelcomeScreenLangSelect: View {
                 return String(revealed[start...])
             }()
 
-            (Text(englishPart)
+            // Noto Serif KR has a taller ascent than PP Editorial New, so as soon as the first
+            // Korean character is typed the line box grows and a top-aligned line slides down.
+            // Instead, pin the heading by its baseline to an invisible copy of the English part:
+            // the line stays where it spawned and the layout keeps the English line's size.
+            Text(String(koreanHeading.prefix(englishPartEnd)))
                 .font(AppTypography.h1)
-             + Text(koreanPart)
-                .font(AppTypography.h1Korean))
-                .lineSpacing(44 - 32)  // Match English H1 line height (44) to prevent shifting during typewriter
                 .tracking(0.88)
-                .foregroundColor(AppColors.primaryText)
+                .hidden()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .overlay(alignment: Alignment(horizontal: .leading, vertical: .firstTextBaseline)) {
+                    (Text(englishPart)
+                        .font(AppTypography.h1)
+                     + Text(koreanPart)
+                        .font(AppTypography.h1Korean))
+                        .lineSpacing(44 - 32)  // Match English H1 line height (44) to prevent shifting during typewriter
+                        .tracking(0.88)
+                        .foregroundColor(AppColors.primaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
         }
     }
 
@@ -204,7 +307,7 @@ struct WelcomeScreenLangSelect: View {
                                 onboardingState.selectedLanguage = .english
                                 onLanguageSelected?(.english)
                                 // Navigate to new screen after short delay
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                DispatchQueue.main.asyncAfter(deadline: .now() + AppStyle.cardSelectNavigationDelay) {
                                     withAnimation(.easeInOut(duration: 0.4)) {
                                         showNewScreen = true
                                     }
@@ -218,7 +321,7 @@ struct WelcomeScreenLangSelect: View {
                                 onboardingState.selectedLanguage = .korean
                                 onLanguageSelected?(.korean)
                                 // Navigate to Korean flow after short delay
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                DispatchQueue.main.asyncAfter(deadline: .now() + AppStyle.cardSelectNavigationDelay) {
                                     withAnimation(.easeInOut(duration: 0.4)) {
                                         showNewScreen = true
                                     }
@@ -457,74 +560,72 @@ struct LanguageCard: View {
             action()
         }) {
             ZStack {
-                // Card background with glassmorphism
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(
-                        LinearGradient(
-                            gradient: Gradient(colors: [
-                                Color.white.opacity(isSelected ? 1.0 : 0.9),
-                                Color.white.opacity(isSelected ? 0.85 : 0.7),
-                                Color.white.opacity(isSelected ? 0.6 : 0.4)
-                            ]),
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
+                if !AppStyle.liquidGlassCards {
+                    // Card background with glassmorphism
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(
+                            LinearGradient(
+                                gradient: Gradient(colors: [
+                                    Color.white.opacity(isSelected ? 1.0 : 0.9),
+                                    Color.white.opacity(isSelected ? 0.85 : 0.7),
+                                    Color.white.opacity(isSelected ? 0.6 : 0.4)
+                                ]),
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
                         )
-                    )
-                    .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(
-                                LinearGradient(
-                                    gradient: Gradient(colors: [
-                                        Color(red: 0.98, green: 0.43, blue: 0.85).opacity(0.4),
-                                        Color(red: 1.0, green: 0.71, blue: 0.45).opacity(0.3)
-                                    ]),
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(
+                                    LinearGradient(
+                                        gradient: Gradient(colors: [
+                                            Color(red: 0.98, green: 0.43, blue: 0.85).opacity(0.4),
+                                            Color(red: 1.0, green: 0.71, blue: 0.45).opacity(0.3)
+                                        ]),
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
                                 )
-                            )
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(
-                                isSelected ? AppColors.claudeDeepOrange : Color.clear,
-                                lineWidth: 2
-                            )
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(
-                                LinearGradient(
-                                    gradient: Gradient(colors: [
-                                        Color.white.opacity(isSelected ? 0.3 : 0.6),
-                                        Color.white.opacity(isSelected ? 0.1 : 0.2)
-                                    ]),
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ),
-                                lineWidth: 1
-                            )
-                    )
-                    .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 1)
+                        )
+                        // Glass rim sits under the selected stroke so it can't cover part of the 2pt line
+                        .overlay(GlassEdgeRim())
+                        .overlay(SelectedCardBorder(isSelected: isSelected))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(
+                                    LinearGradient(
+                                        gradient: Gradient(colors: [
+                                            Color.white.opacity(isSelected ? 0.3 : 0.6),
+                                            Color.white.opacity(isSelected ? 0.1 : 0.2)
+                                        ]),
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    ),
+                                    lineWidth: 1
+                                )
+                        )
+                        .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 1)
 
-                // Inner glow effect
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.clear)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(
-                                LinearGradient(
-                                    gradient: Gradient(colors: [
-                                        Color(red: 0.45, green: 0.55, blue: 0.96).opacity(0.3),
-                                        Color.clear
-                                    ]),
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ),
-                                lineWidth: 2
-                            )
-                            .blur(radius: 4)
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    // Inner glow effect
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.clear)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(
+                                    LinearGradient(
+                                        gradient: Gradient(colors: [
+                                            Color(red: 0.45, green: 0.55, blue: 0.96).opacity(0.3),
+                                            Color.clear
+                                        ]),
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    ),
+                                    lineWidth: 2
+                                )
+                                .blur(radius: 4)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
 
                 // Content
                 VStack(alignment: .leading, spacing: 0) {
@@ -553,6 +654,16 @@ struct LanguageCard: View {
                 .padding(.bottom, 24)
             }
             .frame(width: 168, height: 212)
+            .if(AppStyle.liquidGlassCards) { card in
+                card
+                    .glassEffect(
+                        isSelected
+                            ? Glass.regular.tint(AppColors.claudeDeepOrange.opacity(0.15)).interactive()
+                            : Glass.regular.interactive(),
+                        in: .rect(cornerRadius: 8)
+                    )
+                    .overlay(SelectedCardBorder(isSelected: isSelected))
+            }
             // Selected state shadows - always present, opacity controlled by isSelected
             .shadow(color: Color(hex: "B85C38").opacity(isSelected ? 0.15 : 0), radius: 10, x: 0, y: 0)
             .shadow(color: Color(hex: "E8714E").opacity(isSelected ? 0.50 : 0), radius: 16, x: 0, y: 0)
@@ -583,7 +694,9 @@ struct EnglishSelectedScreen: View {
     var onBackTapped: (() -> Void)?
     var onTranslationStart: ((String) -> Void)?  // Pass room_id to start translation
 
-    @State private var currentScreen: GetStartedScreenState = .pairing(direction: "en_to_kr")
+    // First screen after picking a language depends on the pairing mode (see PairingEntryMode)
+    @State private var currentScreen: GetStartedScreenState =
+        PairingEntryMode.current == .starterJoiner ? .selection : .pairing(direction: "en_to_kr")
 
     private var selectedCard: String? {
         switch onboardingState.selectedSessionMode {
@@ -637,7 +750,7 @@ struct EnglishSelectedScreen: View {
                                 iconTopOffset: 8  // Move icon down 8px
                             ) {
                                 onboardingState.selectedSessionMode = .create
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                DispatchQueue.main.asyncAfter(deadline: .now() + AppStyle.cardSelectNavigationDelay) {
                                     withAnimation(.easeInOut(duration: 0.4)) {
                                         currentScreen = .manualPairing(roomCode: "")
                                     }
@@ -652,7 +765,7 @@ struct EnglishSelectedScreen: View {
                                 iconTopOffset: 4  // Move icon down 4px
                             ) {
                                 onboardingState.selectedSessionMode = .join
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                DispatchQueue.main.asyncAfter(deadline: .now() + AppStyle.cardSelectNavigationDelay) {
                                     withAnimation(.easeInOut(duration: 0.4)) {
                                         currentScreen = .manualPairing(roomCode: "")
                                     }
@@ -679,6 +792,22 @@ struct EnglishSelectedScreen: View {
 
                         Spacer()
                     }
+
+                    #if DEBUG
+                    // Debug: switch pairing mode (Auto-pair jumps back to auto-pairing)
+                    VStack {
+                        Spacer()
+                        PairingModeDebugCard { mode in
+                            if mode == .autoPairing {
+                                withAnimation(.easeInOut(duration: 0.4)) {
+                                    currentScreen = .pairing(direction: "en_to_kr")
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 40)
+                    }
+                    #endif
                 }
                 .transition(.opacity)
             }
@@ -759,7 +888,9 @@ struct KoreanSelectedScreen: View {
     var onBackTapped: (() -> Void)?
     var onTranslationStart: ((String) -> Void)?
 
-    @State private var currentScreen: GetStartedScreenState = .pairing(direction: "kr_to_en")
+    // First screen after picking a language depends on the pairing mode (see PairingEntryMode)
+    @State private var currentScreen: GetStartedScreenState =
+        PairingEntryMode.current == .starterJoiner ? .selection : .pairing(direction: "kr_to_en")
 
     private var selectedCard: String? {
         switch onboardingState.selectedSessionMode {
@@ -813,7 +944,7 @@ struct KoreanSelectedScreen: View {
                                 iconTopOffset: 8  // Move icon down 8px
                             ) {
                                 onboardingState.selectedSessionMode = .create
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                DispatchQueue.main.asyncAfter(deadline: .now() + AppStyle.cardSelectNavigationDelay) {
                                     withAnimation(.easeInOut(duration: 0.4)) {
                                         currentScreen = .manualPairing(roomCode: "")
                                     }
@@ -828,7 +959,7 @@ struct KoreanSelectedScreen: View {
                                 iconTopOffset: 4  // Move icon down 4px
                             ) {
                                 onboardingState.selectedSessionMode = .join
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                DispatchQueue.main.asyncAfter(deadline: .now() + AppStyle.cardSelectNavigationDelay) {
                                     withAnimation(.easeInOut(duration: 0.4)) {
                                         currentScreen = .manualPairing(roomCode: "")
                                     }
@@ -855,6 +986,22 @@ struct KoreanSelectedScreen: View {
 
                         Spacer()
                     }
+
+                    #if DEBUG
+                    // Debug: switch pairing mode (Auto-pair jumps back to auto-pairing)
+                    VStack {
+                        Spacer()
+                        PairingModeDebugCard { mode in
+                            if mode == .autoPairing {
+                                withAnimation(.easeInOut(duration: 0.4)) {
+                                    currentScreen = .pairing(direction: "kr_to_en")
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 40)
+                    }
+                    #endif
                 }
                 .transition(.opacity)
             }
@@ -975,13 +1122,9 @@ struct GetStartedCard: View {
                                 )
                             )
                     )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(
-                                isSelected ? AppColors.claudeDeepOrange : Color.clear,
-                                lineWidth: 2
-                            )
-                    )
+                    // Glass rim sits under the outlines so it can't cover them
+                    .overlay(GlassEdgeRim())
+                    .overlay(SelectedCardBorder(isSelected: isSelected))
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
                             .stroke(
@@ -1067,7 +1210,7 @@ struct BackButton: View {
     let action: () -> Void
 
     var body: some View {
-        GlassCircleButton(icon: "chevron.left") {
+        GlassCircleButton(icon: "chevron.backward") {
             let impactFeedback = UIImpactFeedbackGenerator(style: .light)
             impactFeedback.impactOccurred()
             action()
@@ -1372,6 +1515,8 @@ struct HeadphoneStatusCard: View {
                                 )
                             )
                     )
+                    // Glass rim sits under the outlines so it can't cover them
+                    .overlay(GlassEdgeRim())
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
                             .stroke(
@@ -1505,6 +1650,8 @@ struct SessionCard: View {
                                 )
                             )
                     )
+                    // Glass rim sits under the outlines so it can't cover them
+                    .overlay(GlassEdgeRim())
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
                             .stroke(

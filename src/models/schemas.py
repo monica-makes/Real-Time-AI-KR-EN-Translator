@@ -114,12 +114,27 @@ class AudioOut(BaseModel):
     format: str = "mp3"
 
 
+# ErrorMessage.code values for a segment that couldn't be translated. In a room
+# these errors go to both phones, so neither side waits for text that never comes.
+ERROR_CODE_TRANSLATION_REFUSED = "translation_refused"  # Claude declined (policy)
+ERROR_CODE_TRANSLATION_FAILED = "translation_failed"    # The translation call broke mid-stream
+
+
 class ErrorMessage(BaseModel):
-    """Error message."""
+    """
+    Error message.
+
+    For a segment that couldn't be translated, code says why, segment_id matches
+    the segment's transcript_final and original repeats its source text (the
+    trailing clause of an utterance may never have had a transcript_final).
+    """
     type: Literal["error"] = "error"
     direction: Optional[TranslationDirection] = None
     message: str
     recoverable: bool = True
+    code: Optional[str] = None
+    segment_id: Optional[str] = None
+    original: Optional[str] = None
 
 
 class StatusMessage(BaseModel):

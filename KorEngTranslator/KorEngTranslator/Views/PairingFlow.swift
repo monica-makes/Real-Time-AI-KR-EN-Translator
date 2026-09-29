@@ -217,19 +217,157 @@ class PairingWebSocketManager: ObservableObject {
     @Published var shouldNavigateToManual = false
     @Published var shouldNavigateToSuccess = false
     @Published var connectionTimedOut = false
+    /// Why the last join_room attempt failed (nil while none has); reset on every attempt
+    @Published var joinFailure: JoinFailure? = nil
+    /// True while the server holds the code offered with createRoom (a partner can join it)
+    @Published var isCodeRegistered = false
+    /// Why the last create_room attempt failed (nil while none has); reset on every attempt
+    @Published var createFailure: CreateFailure? = nil
+
+    enum JoinFailure: Equatable {
+        case unknownCode  // The server knows no live creator for that code
+        case connection   // Couldn't reach the server
+    }
+
+    enum CreateFailure: Equatable {
+        case codeInUse    // Another live creator holds that code; offer a different one
+        case rejected     // The server refused the code for another reason
+    }
 
     private var webSocketTask: URLSessionWebSocketTask?
     private var urlSession: URLSession?
     private var direction: String
+    private var manualMode = false
     private var connectionTimeoutTask: Task<Void, Never>?
+    private var joinTimeoutTask: Task<Void, Never>?
+    private var reregisterTask: Task<Void, Never>?
+    /// Reported as soon as the socket is up (the screen's headphone state at connect time)
+    private var initialHeadphoneStatus: Bool?
+    /// Sent as soon as the socket is up (manual pairing)
+    private var pendingCreateCode: String?
+    private var pendingJoinCode: String?
+    /// The code we are offering (registered, or being registered); re-offered after a dropped socket
+    private var offeredCode: String?
 
     init(direction: String = "ko_to_en") {
-        self.direction = direction
+        self.direction = Self.protocolDirection(direction)
     }
 
-    /// - Parameter serverIP: Optional host override (defaults to ServerConfig.host)
-    func connect(serverIP: String? = nil, timeoutSeconds: Double = 8.0) {
-        let urlString = ServerConfig.pairURL(direction: direction, host: serverIP)
+    /// Onboarding says "en_to_kr" / "kr_to_en"; the protocol (and /ws/pair matching) says "en_to_ko" / "ko_to_en"
+    static func protocolDirection(_ raw: String) -> String {
+        switch raw {
+        case "en_to_kr", "en_to_ko":
+            return "en_to_ko"
+        case "kr_to_en", "ko_to_en":
+            return "ko_to_en"
+        default:
+            return raw
+        }
+    }
+
+    /// Connect for Wi-Fi pairing.
+    /// - Parameters:
+    ///   - direction: This user's direction (onboarding or protocol spelling); replaces the init value
+    ///   - headphonesConnected: Current headphone state, reported right after connecting so a phone
+    ///     whose headphones were already on doesn't wait for a route change to count as ready
+    ///   - serverIP: Optional host override (defaults to ServerConfig.host)
+    func connect(
+        direction: String? = nil,
+        headphonesConnected: Bool? = nil,
+        serverIP: String? = nil,
+        timeoutSeconds: Double = 8.0
+    ) {
+        if let direction {
+            self.direction = Self.protocolDirection(direction)
+        }
+        initialHeadphoneStatus = headphonesConnected
+        pendingCreateCode = nil
+        pendingJoinCode = nil
+        manualMode = false
+        open(serverIP: serverIP, timeoutSeconds: timeoutSeconds)
+    }
+
+    /// Manual pairing: register `code` so a partner can join it. `shouldNavigateToSuccess` /
+    /// `roomId` follow once someone does.
+    func createRoom(code: String, direction: String? = nil, serverIP: String? = nil) {
+        if let direction {
+            self.direction = Self.protocolDirection(direction)
+        }
+        // Same code while a manual connection is still coming up (onAppear followed by
+        // onChange(of: displayCode)): the pending request already carries it
+        if manualMode && webSocketTask != nil && !isConnected && pendingCreateCode == code {
+            return
+        }
+        createFailure = nil
+        if offeredCode != code {
+            isCodeRegistered = false
+        }
+        offeredCode = code
+        pendingCreateCode = code
+        pendingJoinCode = nil
+        if isConnected && manualMode {
+            sendJSON(["type": "create_room", "room_code": code])
+            return
+        }
+        manualMode = true
+        open(serverIP: serverIP, timeoutSeconds: 8.0)
+    }
+
+    /// Manual pairing: join the partner who created `code`. Watch `shouldNavigateToSuccess`
+    /// (matched, `roomId` set) and `joinFailure`.
+    func joinRoom(code: String, direction: String? = nil, serverIP: String? = nil, timeoutSeconds: Double = 10.0) {
+        if let direction {
+            self.direction = Self.protocolDirection(direction)
+        }
+        joinFailure = nil
+        pendingJoinCode = code
+        pendingCreateCode = nil
+        offeredCode = nil
+        if isConnected && manualMode {
+            sendJSON(["type": "join_room", "room_code": code])
+        } else {
+            manualMode = true
+            open(serverIP: serverIP, timeoutSeconds: 8.0)  // disconnect() inside cancels older timers
+        }
+        // A join the server never answers fails like an unreachable server, so the screen
+        // doesn't stay on "verifying" forever. Armed after open(), which cancels older timers.
+        joinTimeoutTask?.cancel()
+        joinTimeoutTask = Task { [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: UInt64(timeoutSeconds * 1_000_000_000))
+            } catch {
+                return  // Cancelled: a newer attempt, an answer, or disconnect()
+            }
+            await MainActor.run {
+                guard let self, !Task.isCancelled, self.pendingJoinCode == code else { return }
+                print("[PairingWS] Join timed out after \(timeoutSeconds)s")
+                self.pendingJoinCode = nil
+                self.joinFailure = .connection
+            }
+        }
+    }
+
+    /// Re-offer the current code on a fresh socket after the previous one dropped
+    private func scheduleReregister(after seconds: Double) {
+        reregisterTask?.cancel()
+        reregisterTask = Task { [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            } catch {
+                return
+            }
+            await MainActor.run {
+                guard let self, !Task.isCancelled, let code = self.offeredCode,
+                      self.webSocketTask == nil, !self.shouldNavigateToSuccess else { return }
+                print("[PairingWS] Re-offering room code \(code)")
+                self.pendingCreateCode = nil  // force a fresh connection in createRoom
+                self.createRoom(code: code)
+            }
+        }
+    }
+
+    private func open(serverIP: String?, timeoutSeconds: Double) {
+        let urlString = ServerConfig.pairURL(direction: direction, host: serverIP, manual: manualMode)
         print("[PairingWS] Connecting to: \(urlString)")
         guard let url = URL(string: urlString) else {
             print("[PairingWS] Invalid URL")
@@ -245,9 +383,14 @@ class PairingWebSocketManager: ObservableObject {
         urlSession = session
 
         // Start connection timeout
-        connectionTimeoutTask = Task {
-            try? await Task.sleep(nanoseconds: UInt64(timeoutSeconds * 1_000_000_000))
+        connectionTimeoutTask = Task { [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: UInt64(timeoutSeconds * 1_000_000_000))
+            } catch {
+                return  // Cancelled by a newer open() or disconnect()
+            }
             await MainActor.run {
+                guard let self, !Task.isCancelled else { return }
                 if !self.isConnected && !self.shouldNavigateToSuccess {
                     print("[PairingWS] Connection timeout after \(timeoutSeconds)s")
                     self.handleConnectionFailure()
@@ -263,6 +406,7 @@ class PairingWebSocketManager: ObservableObject {
                     self.pairingState = .waitingForPartner
                     // Cancel timeout since we connected
                     // But keep timeout for partner matching
+                    self.sendPendingRequests()
                 }
             }
         }
@@ -270,7 +414,28 @@ class PairingWebSocketManager: ObservableObject {
         receiveMessage()
     }
 
+    /// Everything the screen asked for before the socket was up
+    private func sendPendingRequests() {
+        if let headphones = initialHeadphoneStatus {
+            sendHeadphoneStatus(connected: headphones)
+        }
+        if let code = pendingCreateCode {
+            sendJSON(["type": "create_room", "room_code": code])
+        }
+        if let code = pendingJoinCode {
+            sendJSON(["type": "join_room", "room_code": code])
+        }
+    }
+
     private func handleConnectionFailure() {
+        if manualMode {
+            // A join that can't reach the server fails like a wrong code; a create just stays unregistered
+            if pendingJoinCode != nil {
+                pendingJoinCode = nil
+                joinFailure = .connection
+            }
+            return
+        }
         connectionTimedOut = true
         // Generate a room code for manual pairing
         roomCode = String(format: "%06d", Int.random(in: 0...999999))
@@ -280,17 +445,30 @@ class PairingWebSocketManager: ObservableObject {
     func disconnect() {
         connectionTimeoutTask?.cancel()
         connectionTimeoutTask = nil
+        joinTimeoutTask?.cancel()
+        joinTimeoutTask = nil
+        reregisterTask?.cancel()
+        reregisterTask = nil
         webSocketTask?.cancel(with: .goingAway, reason: nil)
         webSocketTask = nil
         urlSession?.invalidateAndCancel()
         urlSession = nil
         isConnected = false
+        isCodeRegistered = false
+    }
+
+    /// Stop offering the current code (the screen is going away)
+    func cancelOffer() {
+        offeredCode = nil
+        disconnect()
     }
 
     func sendHeadphoneStatus(connected: Bool) {
         guard isConnected else { return }
+        sendJSON(["type": "headphone_status", "connected": connected])
+    }
 
-        let message = ["type": "headphone_status", "connected": connected] as [String: Any]
+    private func sendJSON(_ message: [String: Any]) {
         guard let jsonData = try? JSONSerialization.data(withJSONObject: message),
               let jsonString = String(data: jsonData, encoding: .utf8) else {
             return
@@ -304,9 +482,13 @@ class PairingWebSocketManager: ObservableObject {
     }
 
     private func receiveMessage() {
-        webSocketTask?.receive { [weak self] result in
+        guard let task = webSocketTask else { return }
+        task.receive { [weak self] result in
             Task { @MainActor in
-                self?.handleReceiveResult(result)
+                // Ignore results from a socket we already closed or replaced (re-connect),
+                // otherwise its cancellation error would fail the new attempt
+                guard let self, self.webSocketTask === task else { return }
+                self.handleReceiveResult(result)
             }
         }
     }
@@ -322,6 +504,17 @@ class PairingWebSocketManager: ObservableObject {
         case .failure(let error):
             print("[PairingWS] Receive error: \(error)")
             isConnected = false
+            isCodeRegistered = false
+            webSocketTask = nil
+            if pendingJoinCode != nil {
+                pendingJoinCode = nil
+                joinTimeoutTask?.cancel()
+                joinFailure = .connection
+            }
+            // A creator's code lives on its socket: get it back on a new one
+            if manualMode && offeredCode != nil && !shouldNavigateToSuccess {
+                scheduleReregister(after: 2.0)
+            }
         }
     }
 
@@ -345,14 +538,41 @@ class PairingWebSocketManager: ObservableObject {
         case "partner_ready":
             partnerStatus = .ready
 
+        case "partner_disconnected":
+            pairingState = .waitingForPartner
+            partnerStatus = .waiting
+
         case "matched":
             roomId = json["room_id"] as? String
+            pendingJoinCode = nil
+            pendingCreateCode = nil
+            joinTimeoutTask?.cancel()
+            reregisterTask?.cancel()
             pairingState = .matched
             shouldNavigateToSuccess = true
 
         case "no_match":
             roomCode = json["room_code"] as? String
             shouldNavigateToManual = true
+
+        case "room_created":
+            pendingCreateCode = nil
+            roomCode = json["room_code"] as? String
+            isCodeRegistered = roomCode == offeredCode
+            print("[PairingWS] Room code registered: \(roomCode ?? "-")")
+
+        case "create_failed":
+            pendingCreateCode = nil
+            isCodeRegistered = false
+            let reason = json["reason"] as? String ?? "-"
+            print("[PairingWS] Could not register room code: \(reason)")
+            createFailure = reason == "code_in_use" ? .codeInUse : .rejected
+
+        case "join_failed":
+            pendingJoinCode = nil
+            joinTimeoutTask?.cancel()
+            print("[PairingWS] Join failed: \(json["reason"] as? String ?? "-")")
+            joinFailure = .unknownCode
 
         default:
             print("[PairingWS] Unknown message type: \(type)")
@@ -415,7 +635,11 @@ struct PairingScreen: View {
 
     // DEBUG: Mode toggle for simulator testing
     #if DEBUG
-    @State private var debugMode = true  // Start in debug mode for simulator
+    #if targetEnvironment(simulator)
+    @State private var debugMode = true   // Simulator: no real pairing, use the debug controls
+    #else
+    @State private var debugMode = false  // Device: pair for real (the toggle below still switches)
+    #endif
     @State private var debugHeadphonesConnected = false
     #endif
 
@@ -493,11 +717,11 @@ struct PairingScreen: View {
         .onAppear {
             #if DEBUG
             if !debugMode {
-                pairingManager.connect()
+                pairingManager.connect(direction: direction, headphonesConnected: effectiveHeadphoneStatus)
                 startHeadphoneAlertTimer()
             }
             #else
-            pairingManager.connect()
+            pairingManager.connect(direction: direction, headphonesConnected: effectiveHeadphoneStatus)
             startHeadphoneAlertTimer()
             #endif
         }
@@ -589,9 +813,16 @@ struct PairingScreen: View {
                         if newValue {
                             pairingManager.disconnect()
                         } else {
-                            pairingManager.connect()
+                            pairingManager.connect(direction: direction, headphonesConnected: effectiveHeadphoneStatus)
                         }
                     }
+            }
+
+            // Pairing mode (remembered): Starter / Joiner jumps to the Create/Join choice
+            PairingModeDebugPicker { mode in
+                if mode == .starterJoiner {
+                    onManualPairing?("")
+                }
             }
 
             if debugMode {
@@ -724,10 +955,7 @@ struct PairingScreen: View {
             }
         }
         .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(.ultraThinMaterial)
-        )
+        .glassEffect(.regular, in: .rect(cornerRadius: 12))
         .overlay(
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Color.orange.opacity(0.3), lineWidth: 1)
@@ -791,6 +1019,8 @@ struct PairingHeadphoneStatusCard: View {
                                 )
                             )
                     )
+                    // Glass rim sits under the outlines so it can't cover them
+                    .overlay(GlassEdgeRim())
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
                             .stroke(
@@ -909,6 +1139,8 @@ struct PairingHeadphoneStatusCardKorean: View {
                                 )
                             )
                     )
+                    // Glass rim sits under the outlines so it can't cover them
+                    .overlay(GlassEdgeRim())
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
                             .stroke(
@@ -1004,6 +1236,7 @@ struct ManualPairingScreen: View {
     @StateObject private var qrScanner = QRScannerModel(autoStart: false)
     @StateObject private var keyboardObserver = KeyboardObserver()
     @ObservedObject private var sharedCodeManager = RoomCodeManager.shared
+    @StateObject private var pairingManager = PairingWebSocketManager()
 
     // Debug mode override
     #if DEBUG
@@ -1190,7 +1423,8 @@ struct ManualPairingScreen: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let topPadding = geometry.size.height * 0.225
+            // Create mode sits 40pt higher so the full-width QR card and the share code both fit
+            let topPadding = geometry.size.height * 0.225 - (effectiveMode == .create ? 40 : 0)
 
             ZStack {
                 // Scrollable content with top gradient overlay
@@ -1409,12 +1643,39 @@ struct ManualPairingScreen: View {
                 }
             }
             .onAppear {
-                // Generate a new code when entering Create mode in debug
-                #if DEBUG
-                if effectiveMode == .create && sharedCodeManager.generatedRoomCode.isEmpty {
+                // Create mode: make a code and register it with the server so the partner can join it
+                if effectiveMode == .create {
+                    if sharedCodeManager.generatedRoomCode.isEmpty {
+                        sharedCodeManager.generateNewCode(language: "en")
+                    }
+                    pairingManager.createRoom(code: displayCode, direction: "en_to_ko")
+                }
+            }
+            .onDisappear {
+                pairingManager.cancelOffer()
+            }
+            .onChange(of: displayCode) { _, newCode in
+                // The debug "Create" button makes a fresh code; offer that one instead
+                if effectiveMode == .create {
+                    pairingManager.createRoom(code: newCode, direction: "en_to_ko")
+                }
+            }
+            .onChange(of: pairingManager.createFailure) { _, failure in
+                // Someone else is offering the same code right now: show a different one
+                if failure == .codeInUse, effectiveMode == .create {
                     sharedCodeManager.generateNewCode(language: "en")
                 }
-                #endif
+            }
+            .onChange(of: pairingManager.shouldNavigateToSuccess) { _, matched in
+                // The partner joined our code, or the server accepted the code we entered
+                if matched, let roomId = pairingManager.roomId {
+                    joinSucceeded(roomId: roomId)
+                }
+            }
+            .onChange(of: pairingManager.joinFailure) { _, failure in
+                if let failure, isConnecting {
+                    joinFailed(failure)
+                }
             }
         }
     }
@@ -1423,36 +1684,34 @@ struct ManualPairingScreen: View {
 
     private var createModeContent: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // QR Code Section Label - 32pt below subtitle
+            // QR Code Section Label - 20pt below subtitle
             Text("Show this QR code:")
                 .font(AppTypography.h3)
                 .foregroundColor(AppColors.primaryText)
-                .padding(.top, 32)
+                .padding(.top, 14)
 
-            // QR Code - 12pt below label (uses cached image to prevent flickering)
+            // QR Code - 10pt below label, in a full-width container like the code box below
+            // (uses cached image to prevent flickering)
             if let qrImage = cachedQRImage {
-                ZStack {
-                    // White container 242x242
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(AppColors.cardFill.opacity(0.95))
-                        .frame(width: 242, height: 242)
-
-                    // QR code centered inside (228x228 - 6px padding on each side, reduced from 8px)
-                    Image(uiImage: qrImage)
-                        .interpolation(.none)
-                        .resizable()
-                        .frame(width: 228, height: 228)
-                }
-                .codeBoxShadow()
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.top, 12)
+                Image(uiImage: qrImage)
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(1, contentMode: .fit)
+                    .padding(16)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(AppColors.cardFill.opacity(0.95))
+                    )
+                    .codeBoxShadow()
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 10)
             }
 
-            // Code Section Label - 76pt below QR code (60 + 16)
+            // Code Section Label - 16pt below QR code
             Text("Or share this code:")
                 .font(AppTypography.b2)
                 .foregroundColor(AppColors.primaryText)
-                .padding(.top, 76)
+                .padding(.top, 16)
 
             // Code Display Card - 16pt below label
             HStack(alignment: .center) {
@@ -1753,10 +2012,7 @@ struct ManualPairingScreen: View {
             .buttonStyle(PlainButtonStyle())
         }
         .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(.ultraThinMaterial)
-        )
+        .glassEffect(.regular, in: .rect(cornerRadius: 12))
         .overlay(
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Color.orange.opacity(0.3), lineWidth: 1)
@@ -1768,11 +2024,9 @@ struct ManualPairingScreen: View {
 
     /// The actual code to display - uses roomCodeManager in debug mode when available
     private var displayCode: String {
-        #if DEBUG
         if !sharedCodeManager.generatedRoomCode.isEmpty {
             return sharedCodeManager.generatedRoomCode
         }
-        #endif
         return roomCode
     }
 
@@ -1812,63 +2066,69 @@ struct ManualPairingScreen: View {
 
         // Don't dismiss keyboard yet - keep it up during validation
 
-        // TODO: Connect to WebSocket with entered code
-        // For now, simulate validation after delay
+        // Ask the server to pair us with whoever created this code. `matched` or `join_failed`
+        // comes back through pairingManager (see the onChange handlers on this screen)
+        pairingManager.joinRoom(code: enteredCode, direction: "en_to_ko")
+    }
+
+    /// Both phones now share a room id: dismiss the keyboard and move on
+    private func joinSucceeded(roomId: String) {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        isCodeFieldFocused = false
+        isConnecting = false
+        showError = false
+        showErrorGlow = false
+        onSuccess?(roomId)
+    }
+
+    private func joinFailed(_ failure: PairingWebSocketManager.JoinFailure) {
+        #if DEBUG
+        // Single-device debug flow without a backend (Create here, then switch to the partner's
+        // Join screen): a code generated on this phone is accepted locally. A server that
+        // answered "unknown code" is never overridden.
+        if failure == .connection && sharedCodeManager.validateCode(enteredCode) {
+            joinSucceeded(roomId: enteredCode)
+            return
+        }
+        #if targetEnvironment(simulator)
+        // Simulator UI work with no backend: keep the old rule, codes starting with "9" fail
+        if failure == .connection && sharedCodeManager.generatedRoomCode.isEmpty && !enteredCode.hasPrefix("9") {
+            joinSucceeded(roomId: enteredCode)
+            return
+        }
+        #endif
+        #endif
+
+        // Hide connecting state before showing error
+        isConnecting = false
+
+        // Show error state with glow and text
+        withAnimation(.easeInOut(duration: 0.2)) {
+            showError = true
+            showErrorGlow = true
+        }
+        triggerErrorHaptic()
+
+        // After 0.75s, animate digits out (fade down)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
+            withAnimation(.easeInOut(duration: 0.3)) {
+                isAnimatingOut = true
+            }
+
+            // After digits fade out (0.3s), clear code and reset first box
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                enteredCode = ""
+                isAnimatingOut = false
+                // First box becomes active again, keyboard stays up
+                isCodeFieldFocused = true
+            }
+        }
+
+        // After 1 second, fade out the glow but keep error text
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            // Validate code - in debug/simulator, use test validation
-            let isValid: Bool
-
-            // Debug validation: codes starting with "9" always fail
-            // If a code was generated (Create mode), must match exactly
-            if !sharedCodeManager.generatedRoomCode.isEmpty {
-                // Validate against generated code
-                isValid = sharedCodeManager.validateCode(enteredCode)
-            } else {
-                // No code generated - use simple rule: codes starting with "9" fail
-                isValid = !enteredCode.hasPrefix("9")
+            withAnimation(.easeInOut(duration: 0.3)) {
+                showErrorGlow = false
             }
-
-            if !isValid {
-                // Hide connecting state before showing error
-                isConnecting = false
-
-                // Show error state with glow and text
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    showError = true
-                    showErrorGlow = true
-                }
-                triggerErrorHaptic()
-
-                // After 0.75s, animate digits out (fade down)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        isAnimatingOut = true
-                    }
-
-                    // After digits fade out (0.3s), clear code and reset first box
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        enteredCode = ""
-                        isAnimatingOut = false
-                        // First box becomes active again, keyboard stays up
-                        isCodeFieldFocused = true
-                    }
-                }
-
-                // After 1 second, fade out the glow but keep error text
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        showErrorGlow = false
-                    }
-                }
-                return
-            }
-
-            // Success - dismiss keyboard and navigate
-            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-            isCodeFieldFocused = false
-            showError = false
-            showErrorGlow = false
-            onSuccess?(enteredCode)
         }
     }
 
@@ -1884,20 +2144,8 @@ struct ManualPairingScreen: View {
     }
 
     private func generateQRCode(from string: String) -> UIImage? {
-        let filter = CIFilter.qrCodeGenerator()
-        filter.message = Data(string.utf8)
-
-        guard let ciImage = filter.outputImage else { return nil }
-
-        let transform = CGAffineTransform(scaleX: 10, y: 10)
-        let scaledImage = ciImage.transformed(by: transform)
-
-        let context = CIContext()
-        guard let cgImage = context.createCGImage(scaledImage, from: scaledImage.extent) else {
-            return nil
-        }
-
-        return UIImage(cgImage: cgImage)
+        // Dotted QR with the Dari logo; encodes a pairing link (the Join scanner keeps the digits)
+        StyledQRCode.image(for: StyledQRCode.pairingPayload(code: string, language: "en"))
     }
 }
 
@@ -2397,33 +2645,14 @@ struct SetupSuccessScreen: View {
     var onBackTapped: (() -> Void)?  // Debug only
 
     @State private var hasProceeded = false
-    @State private var circleScale: CGFloat = 1.0
-    @State private var checkmarkProgress: CGFloat = 0.0
+    @State private var showCheck = false
 
     var body: some View {
         ZStack {
             // Content (background and gradient provided by parent WelcomeScreenLangSelect)
             VStack(alignment: .leading, spacing: 0) {
                 // Success checkmark with animation
-                ZStack {
-                    // Outer pulsing circle - sage green
-                    Circle()
-                        .fill(AppColors.lightGreen.opacity(0.6))
-                        .frame(width: 48, height: 48)
-                        .scaleEffect(circleScale)
-
-                    // Inner static circle - success green
-                    Circle()
-                        .fill(AppColors.successGreen)
-                        .frame(width: 36, height: 36)
-
-                    // Animated checkmark - white
-                    CheckmarkShape()
-                        .trim(from: 0, to: checkmarkProgress)
-                        .stroke(AppColors.whiteIcon, style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
-                        .frame(width: 18, height: 18)
-                }
-                .frame(width: 48, height: 48)
+                SuccessCheckBadge(isShown: showCheck)
 
                 // Title - 20px below checkmark
                 Text("You're all set!")
@@ -2479,23 +2708,80 @@ struct SetupSuccessScreen: View {
     }
 
     private func startSuccessAnimation() {
-        // Circle pulse: starts 0.1s after appear, 1.0 → 1.25 → 1.0 over 0.6s
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            withAnimation(.easeInOut(duration: 0.3)) {
-                circleScale = 1.25
-            }
+        showCheck = true
+    }
+}
+
+// MARK: - Success Check Badge
+// Shared by SetupSuccessScreen and SetupSuccessScreenKorean.
+// Appear (Transitions.dev "Success check", minus the Y-bob): the badge fades in,
+// unrotates from 80°, and unblurs from 10pt while the check stroke draws.
+// The sage halo behind it pulses 1.0 → 1.25 → 1.0 on the card-stack spring
+// curves, so it overshoots on the way out and again on the way back.
+
+struct SuccessCheckBadge: View {
+    var isShown: Bool
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    @State private var appeared = false
+    @State private var haloScale: CGFloat = 1.0
+    @State private var checkProgress: CGFloat = 0.0
+
+    // Appear: 500ms, cubic-bezier(0.22, 1, 0.36, 1)
+    private static let appearEase = Animation.timingCurve(0.22, 1, 0.36, 1, duration: 0.5)
+    // Check draw: 500ms after an 80ms delay, same ease-out
+    private static let drawEase = Animation.timingCurve(0.22, 1, 0.36, 1, duration: 0.5).delay(0.08)
+    // Halo out: 410ms, cubic-bezier(0.31, 2.34, 0.64, 1) — springy overshoot
+    private static let haloOpen = Animation.timingCurve(0.31, 2.34, 0.64, 1, duration: 0.41)
+    // Halo back: 360ms, cubic-bezier(0.34, 1.9, 0.64, 1) — softer spring
+    private static let haloClose = Animation.timingCurve(0.34, 1.9, 0.64, 1, duration: 0.36)
+
+    var body: some View {
+        ZStack {
+            // Outer pulsing halo - sage green
+            Circle()
+                .fill(AppColors.lightGreen.opacity(0.6))
+                .frame(width: 48, height: 48)
+                .scaleEffect(haloScale)
+
+            // Inner circle - success green
+            Circle()
+                .fill(AppColors.successGreen)
+                .frame(width: 36, height: 36)
+
+            // Drawn checkmark - white
+            CheckmarkShape()
+                .trim(from: 0, to: checkProgress)
+                .stroke(AppColors.whiteIcon, style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+                .frame(width: 18, height: 18)
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-            withAnimation(.easeInOut(duration: 0.3)) {
-                circleScale = 1.0
-            }
+        .frame(width: 48, height: 48)
+        .opacity(appeared ? 1 : 0)
+        .rotationEffect(.degrees(appeared ? 0 : 80))
+        .blur(radius: appeared ? 0 : 10)
+        .onAppear { if isShown { play() } }
+        .onChange(of: isShown) { _, shown in if shown { play() } }
+    }
+
+    private func play() {
+        guard !appeared else { return }
+
+        if reduceMotion {
+            appeared = true
+            checkProgress = 1
+            return
         }
 
-        // Checkmark draw: starts at 0.25s, finishes when circle finishes (0.7s)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            withAnimation(.easeOut(duration: 0.45)) {
-                checkmarkProgress = 1.0
-            }
+        withAnimation(Self.appearEase) { appeared = true }
+        withAnimation(Self.drawEase) { checkProgress = 1 }
+
+        // Halo bounce: out at 0.1s, back once the open spring settles
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            withAnimation(Self.haloOpen) { haloScale = 1.25 }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1 + 0.41) {
+            withAnimation(Self.haloClose) { haloScale = 1.0 }
         }
     }
 }
@@ -2537,6 +2823,7 @@ struct LiveTranslationScreen: View {
     // MARK: - Audio State
     @State private var audioLevel: CGFloat = 0.0
     @State private var isSpeaking: Bool = false
+    @State private var lastLoudAt: Date = .distantPast   // last time the mic heard real voice energy
 
     // MARK: - Language Selector State
     // true = I speak English (They speak Korean), false = I speak Korean (They speak English)
@@ -2550,17 +2837,21 @@ struct LiveTranslationScreen: View {
     @State private var isPartnerConnected: Bool = false
     @State private var isJoining: Bool = false  // Room join in flight (waiting for session_started)
     @State private var pendingCaptureStart: Bool = false  // Start capture as soon as the join completes
+    @State private var isServerUnreachable: Bool = false  // Last join couldn't reach the backend (shown as Offline)
+    @State private var reconnectTask: Task<Void, Never>?  // Re-joins on a timer while the backend is unreachable
 
-    // MARK: - Translation Display State
-    @State private var myLastUtterance: String = ""
-    @State private var partnerLastUtterance: String = ""
-    @State private var partnerTranslation: String = ""
+    // MARK: - Conversation State
+    // Both sides of the conversation (my lines and the partner's), joined by the server's
+    // segment id. The chat redesign will render all of it; for now the latest line is shown.
+    @State private var conversation = ConversationLog()
 
     // MARK: - Debug Mode State
     @State private var showDebugMenu: Bool = false
     @State private var selectedBubbleStyle: BubbleStyle = .combination
     @State private var simulatedAudioLevel: CGFloat = 0.0
     @State private var isSimulatingSpeaking: Bool = false
+    @State private var useSiriGlass: Bool = false          // New Siri-style glass look (debug toggle)
+    @State private var debugOrbState: OrbState? = nil     // nil = Auto (follow real mic/playback state)
 
     #if DEBUG
     @State private var debugLanguage: String? = nil  // Override language in debug mode
@@ -2594,6 +2885,25 @@ struct LiveTranslationScreen: View {
         showDebugMenu ? isSimulatingSpeaking : isSpeaking
     }
 
+    /// What the orb should be doing right now.
+    /// A debug override wins; otherwise derived from playback + mic state.
+    private var effectiveOrbState: OrbState {
+        #if DEBUG
+        if let override = debugOrbState { return override }
+        #endif
+        if audioPlayback.isOutputActive { return .responding }   // translated speech is playing
+        if effectiveIsSpeaking && (isSessionActive || showDebugMenu) { return .listening }
+        return .idle                                              // waiting / other person talking
+    }
+
+    /// Intensity the orb animates with (0...1). Debug slider when overriding, else live mic level.
+    private var effectiveOrbLevel: CGFloat {
+        #if DEBUG
+        if debugOrbState != nil { return simulatedAudioLevel }
+        #endif
+        return effectiveAudioLevel
+    }
+
 
     var body: some View {
         ZStack {
@@ -2611,13 +2921,18 @@ struct LiveTranslationScreen: View {
             // Bubble - centered in screen
             VStack(spacing: 24) {
                 // Animated bubble with extra space for glow effects
-                // Active prototype - animates continuously without audio bindings
-                OrganicBubble(style: selectedBubbleStyle)
-                    .frame(width: 400, height: 400)  // Larger container to prevent glow clipping
+                // Classic styles animate unbound; the Siri-glass variant follows orbState / audioLevel
+                OrganicBubble(
+                    style: selectedBubbleStyle,
+                    useSiriGlass: useSiriGlass,
+                    orbState: effectiveOrbState,
+                    audioLevel: effectiveOrbLevel
+                )
+                .frame(width: 400, height: 400)  // Larger container to prevent glow clipping
 
-                // Translation display (shows when partner speaks)
-                if !partnerTranslation.isEmpty {
-                    translationDisplayView
+                // Latest line of the conversation (mine or the partner's) with its translation
+                if let line = conversation.latest {
+                    translationDisplayView(for: line)
                         .transition(.opacity.combined(with: .scale(scale: 0.95)))
                 }
             }
@@ -2696,10 +3011,20 @@ struct LiveTranslationScreen: View {
             #endif
         }
         .onAppear {
+            #if DEBUG
+            if isOrbPreview {
+                // Screenshot / preview harness: no server round-trip, so frames are deterministic
+                applyOrbLaunchArguments()
+                return
+            }
+            #endif
+            // Labels, captions and notices follow the language this screen was opened with
+            iSpeakEnglish = effectiveLanguage == "en"
             setupWebSocket()
             connectToRoom()
         }
         .onDisappear {
+            reconnectTask?.cancel()
             disconnect()
         }
     }
@@ -2725,6 +3050,10 @@ struct LiveTranslationScreen: View {
 
     private var connectionStatusText: String {
         if !isConnected {
+            // Stays Offline through background retries, so the pill doesn't flicker every few seconds
+            if isServerUnreachable {
+                return isKorean ? "오프라인" : "Offline"
+            }
             return "Connecting..."
         } else if !isPartnerConnected {
             return isKorean ? "파트너 대기 중" : "Waiting for partner"
@@ -2734,11 +3063,19 @@ struct LiveTranslationScreen: View {
     }
 
     // MARK: - Translation Display View
-    private var translationDisplayView: some View {
-        VStack(spacing: 8) {
-            // Original text (partner's language)
-            if !partnerLastUtterance.isEmpty {
-                Text(partnerLastUtterance)
+    private func translationDisplayView(for line: ConversationLine) -> some View {
+        // My words are translated into the partner's language, theirs into mine
+        let translatedIsKorean = (line.side == .partner) == isKorean
+
+        return VStack(spacing: 8) {
+            // Who said it
+            Text(line.side == .me ? (isKorean ? "나" : "You") : (isKorean ? "상대방" : "Partner"))
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(AppColors.primaryText.opacity(0.5))
+
+            // What was said, in the speaker's language
+            if !line.original.isEmpty {
+                Text(line.original)
                     .font(.system(size: 14))
                     .foregroundColor(AppColors.primaryText.opacity(0.6))
                     .multilineTextAlignment(.center)
@@ -2749,11 +3086,18 @@ struct LiveTranslationScreen: View {
                 .fill(AppColors.primaryText.opacity(0.2))
                 .frame(width: 60, height: 1)
 
-            // Translated text (my language)
-            Text(partnerTranslation)
-                .font(isKorean ? AppTypography.h3Korean : AppTypography.h3)
-                .foregroundColor(AppColors.primaryText)
-                .multilineTextAlignment(.center)
+            // Its translation, or why there is none
+            if let failure = line.failure {
+                Text(failureText(for: failure))
+                    .font(.system(size: 14))
+                    .foregroundColor(AppColors.errorRed)
+                    .multilineTextAlignment(.center)
+            } else {
+                Text(line.translated ?? "…")
+                    .font(translatedIsKorean ? AppTypography.h3Korean : AppTypography.h3)
+                    .foregroundColor(AppColors.primaryText)
+                    .multilineTextAlignment(.center)
+            }
         }
         .padding(.horizontal, 32)
         .padding(.vertical, 16)
@@ -2763,6 +3107,14 @@ struct LiveTranslationScreen: View {
         )
     }
 
+    /// Notice for a segment the server couldn't translate, in this phone's language
+    private func failureText(for failure: TranslationFailureEvent) -> String {
+        if failure.isRefusal {
+            return isKorean ? "번역할 수 없었어요. 다시 말씀해 주세요." : "Couldn't translate that - please rephrase."
+        }
+        return isKorean ? "번역에 실패했어요. 다시 시도해 주세요." : failure.message
+    }
+
     // MARK: - WebSocket Setup
     private func setupWebSocket() {
         // Set up callbacks for session events
@@ -2770,6 +3122,7 @@ struct LiveTranslationScreen: View {
             DispatchQueue.main.async {
                 isConnected = true
                 isJoining = false
+                isServerUnreachable = false
                 print("[LiveTranslation] Session started in room: \(roomId)")
 
                 // Mic was tapped while we were (re)joining - start capture now
@@ -2794,18 +3147,39 @@ struct LiveTranslationScreen: View {
             }
         }
 
-        webSocket.onMyTranscription = { text in
+        // Conversation text: both sides go into the log, which the display follows
+        webSocket.onMyTranscript = { event in
             DispatchQueue.main.async {
-                myLastUtterance = text
-                print("[LiveTranslation] My transcription: \(text)")
+                withAnimation { conversation.apply(event, side: .me) }
+                if event.isFinal { print("[LiveTranslation] I said: \(event.text)") }
             }
         }
 
-        webSocket.onPartnerTranslation = { original, translated in
+        webSocket.onPartnerTranscript = { event in
             DispatchQueue.main.async {
-                partnerLastUtterance = original
-                partnerTranslation = translated
-                print("[LiveTranslation] Partner said: \(original) -> \(translated)")
+                withAnimation { conversation.apply(event, side: .partner) }
+                if event.isFinal { print("[LiveTranslation] Partner said: \(event.text)") }
+            }
+        }
+
+        webSocket.onMyTranslation = { event in
+            DispatchQueue.main.async {
+                withAnimation { conversation.apply(event, side: .me) }
+                print("[LiveTranslation] My words translated: \(event.original) -> \(event.translated)")
+            }
+        }
+
+        webSocket.onPartnerTranslation = { event in
+            DispatchQueue.main.async {
+                withAnimation { conversation.apply(event, side: .partner) }
+                print("[LiveTranslation] Partner's words translated: \(event.original) -> \(event.translated)")
+            }
+        }
+
+        webSocket.onTranslationFailed = { event, side in
+            DispatchQueue.main.async {
+                withAnimation { conversation.apply(event, side: side) }
+                print("[LiveTranslation] Segment not translated (\(side)): \(event.message)")
             }
         }
 
@@ -2839,7 +3213,24 @@ struct LiveTranslationScreen: View {
                     isSessionActive = false
                 }
                 stopAudioCapture()
+
+                // Backend down or unreachable: say so, and keep re-joining so the screen
+                // recovers by itself once it's back (a mic tap also retries right away)
+                isServerUnreachable = true
+                print("[LiveTranslation] Can't reach \(ServerConfig.translateURL) - is the backend running? Retrying in \(Int(Self.reconnectDelay))s")
+                scheduleReconnect()
             }
+        }
+    }
+
+    private static let reconnectDelay: TimeInterval = 3
+
+    private func scheduleReconnect() {
+        reconnectTask?.cancel()
+        reconnectTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(Self.reconnectDelay))
+            guard !Task.isCancelled, !isConnected, !isJoining else { return }
+            connectToRoom()
         }
     }
 
@@ -2882,7 +3273,7 @@ struct LiveTranslationScreen: View {
                 // Update audio level for bubble animation
                 DispatchQueue.main.async {
                     self.audioLevel = CGFloat(level)
-                    self.isSpeaking = level > 0.1
+                    self.updateSpeakingGate(level: CGFloat(level))
                 }
 
                 // Echo guard: while our translated speech is playing through the phone's own
@@ -2912,6 +3303,26 @@ struct LiveTranslationScreen: View {
         DispatchQueue.main.async {
             self.audioLevel = 0
             self.isSpeaking = false
+        }
+    }
+
+    // MARK: - Speaking Gate
+    // The capture meter is dB-normalized ((dB + 60) / 60), so 0.1 is only -54 dBFS: room noise or the
+    // partner across the table. Enter "speaking" on real voice energy and leave only after a short
+    // silence, so the orb's listening state neither flickers between syllables nor tracks the partner.
+    private static let speakingEnterLevel: CGFloat = 0.35   // about -39 dBFS
+    private static let speakingExitLevel: CGFloat = 0.22    // about -47 dBFS
+    private static let speakingHoldOff: TimeInterval = 0.5
+
+    private func updateSpeakingGate(level: CGFloat) {
+        let now = Date()
+        if level >= Self.speakingEnterLevel {
+            lastLoudAt = now
+            if !isSpeaking { isSpeaking = true }
+        } else if isSpeaking,
+                  level < Self.speakingExitLevel,
+                  now.timeIntervalSince(lastLoudAt) > Self.speakingHoldOff {
+            isSpeaking = false
         }
     }
 
@@ -2949,25 +3360,47 @@ struct LiveTranslationScreen: View {
                     )
             }
 
-            // Expandable menu
+            // Expandable menu (scrolls once it outgrows the safe area, so the ladybug stays put)
             if showDebugMenu {
-                VStack(alignment: .leading, spacing: 12) {
-                    // Language toggle section
-                    languageDebugSection
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        // Start over on the welcome screen
+                        restartDebugSection
 
-                    Divider()
-                        .background(Color.white.opacity(0.2))
+                        Divider()
+                            .background(Color.white.opacity(0.2))
 
-                    // Bubble style section
-                    bubbleStyleDebugSection
+                        // Orb look: classic vs new Siri glass
+                        orbLookDebugSection
 
-                    Divider()
-                        .background(Color.white.opacity(0.2))
+                        Divider()
+                            .background(Color.white.opacity(0.2))
 
-                    // Audio simulation section
-                    audioSimulationDebugSection
+                        // Orb state: idle / listening / responding
+                        orbStateDebugSection
+
+                        Divider()
+                            .background(Color.white.opacity(0.2))
+
+                        // Language toggle section
+                        languageDebugSection
+
+                        Divider()
+                            .background(Color.white.opacity(0.2))
+
+                        // Bubble style section (classic looks only)
+                        bubbleStyleDebugSection
+
+                        Divider()
+                            .background(Color.white.opacity(0.2))
+
+                        // Audio simulation section
+                        audioSimulationDebugSection
+                    }
+                    .padding(12)
                 }
-                .padding(12)
+                .frame(maxHeight: 440)
+                .fixedSize(horizontal: true, vertical: false)
                 .background(
                     RoundedRectangle(cornerRadius: 12)
                         .fill(Color.black.opacity(0.75))
@@ -2978,6 +3411,118 @@ struct LiveTranslationScreen: View {
                 )
                 .transition(.scale(scale: 0.8, anchor: .topTrailing).combined(with: .opacity))
             }
+        }
+    }
+
+    private var restartDebugSection: some View {
+        Button(action: {
+            NotificationCenter.default.post(name: .debugRestartToHome, object: nil)
+        }) {
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.counterclockwise")
+                Text("Restart on home screen")
+                    .font(.system(size: 12, weight: .semibold))
+            }
+            .foregroundColor(.white)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                Capsule()
+                    .fill(Color.white.opacity(0.12))
+            )
+        }
+    }
+
+    private var orbLookDebugSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("ORB LOOK")
+                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .foregroundColor(.white.opacity(0.5))
+
+            Toggle(isOn: $useSiriGlass.animation(.easeInOut(duration: 0.35))) {
+                HStack(spacing: 6) {
+                    Image(systemName: "sparkles")
+                        .foregroundColor(useSiriGlass ? AppColors.gradientPeach : .white.opacity(0.7))
+                    Text(useSiriGlass ? "Siri Glass (new)" : "Classic")
+                        .font(.system(size: 12))
+                }
+            }
+            .toggleStyle(SwitchToggleStyle(tint: AppColors.gradientPeach))
+            .foregroundColor(.white)
+        }
+    }
+
+    private var orbStateDebugSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("ORB STATE")
+                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .foregroundColor(.white.opacity(0.5))
+
+            HStack(spacing: 6) {
+                orbStateChip(nil, label: "Auto")
+                orbStateChip(.idle, label: "Idle")
+            }
+            HStack(spacing: 6) {
+                orbStateChip(.listening, label: "Listening")
+                orbStateChip(.responding, label: "Responding")
+            }
+
+            Text("Now: \(effectiveOrbState.displayName)")
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundColor(.white.opacity(0.4))
+            Text("Idle = other person talking")
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundColor(.white.opacity(0.4))
+        }
+    }
+
+    private func orbStateChip(_ state: OrbState?, label: String) -> some View {
+        let isSelected = debugOrbState == state
+        return Button(action: {
+            withAnimation(.easeInOut(duration: 0.25)) {
+                debugOrbState = state
+            }
+        }) {
+            Text(label)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(isSelected ? AppColors.gradientPeach : .white)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(isSelected ? Color.white.opacity(0.2) : Color.clear)
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// True only on the `-orbPreview` launch route (see KorEngTranslatorApp), never in the normal flow
+    private var isOrbPreview: Bool {
+        roomId == "ORB-PREVIEW" && ProcessInfo.processInfo.arguments.contains("-orbPreview")
+    }
+
+    /// Launch arguments for screenshot / preview runs (Debug builds only), e.g.
+    /// `-orbPreview -siriGlass 1 -orbState listening -orbLevel 0.6 -bubbleStyle 3`
+    private func applyOrbLaunchArguments() {
+        let args = ProcessInfo.processInfo.arguments
+        func value(after flag: String) -> String? {
+            guard let i = args.firstIndex(of: flag), i + 1 < args.count else { return nil }
+            return args[i + 1]
+        }
+        if args.contains("-orbPreview") {
+            hasStartedOnce = true   // hide the "Tap the mic" overlay so the orb is unobstructed
+        }
+        if let raw = value(after: "-siriGlass") {
+            useSiriGlass = (raw as NSString).boolValue
+        }
+        if let raw = value(after: "-orbState") {
+            debugOrbState = OrbState(rawValue: raw.lowercased())
+        }
+        if let raw = value(after: "-orbLevel"), let level = Double(raw) {
+            simulatedAudioLevel = CGFloat(min(max(level, 0), 1))
+        }
+        if let raw = value(after: "-bubbleStyle"), let n = Int(raw), let style = BubbleStyle(rawValue: n) {
+            selectedBubbleStyle = style
         }
     }
 
@@ -3246,7 +3791,11 @@ struct PairingScreenKorean: View {
 
     // DEBUG: Mode toggle for simulator testing
     #if DEBUG
-    @State private var debugMode = true  // Start in debug mode for simulator
+    #if targetEnvironment(simulator)
+    @State private var debugMode = true   // Simulator: no real pairing, use the debug controls
+    #else
+    @State private var debugMode = false  // Device: pair for real (the toggle below still switches)
+    #endif
     @State private var debugHeadphonesConnected = false
     #endif
 
@@ -3336,11 +3885,11 @@ struct PairingScreenKorean: View {
         .onAppear {
             #if DEBUG
             if !debugMode {
-                pairingManager.connect()
+                pairingManager.connect(direction: direction, headphonesConnected: effectiveHeadphoneStatus)
                 startHeadphoneAlertTimer()
             }
             #else
-            pairingManager.connect()
+            pairingManager.connect(direction: direction, headphonesConnected: effectiveHeadphoneStatus)
             startHeadphoneAlertTimer()
             #endif
         }
@@ -3428,6 +3977,13 @@ struct PairingScreenKorean: View {
                 .toggleStyle(SwitchToggleStyle(tint: .orange))
                 .foregroundColor(.white)
 
+            // Pairing mode (remembered): Starter / Joiner jumps to the Create/Join choice
+            PairingModeDebugPicker(onDarkBackground: true) { mode in
+                if mode == .starterJoiner {
+                    onManualPairing?("")
+                }
+            }
+
             if debugMode {
                 Toggle("Headphones", isOn: $debugHeadphonesConnected)
                     .toggleStyle(SwitchToggleStyle(tint: .green))
@@ -3481,6 +4037,7 @@ struct ManualPairingScreenKorean: View {
     @StateObject private var qrScanner = QRScannerModel(autoStart: false)
     @StateObject private var keyboardObserver = KeyboardObserver()
     @ObservedObject private var sharedCodeManager = RoomCodeManager.shared
+    @StateObject private var pairingManager = PairingWebSocketManager()
 
     #if DEBUG
     @State private var debugSessionMode: SessionMode? = nil
@@ -3626,7 +4183,8 @@ struct ManualPairingScreenKorean: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let topPadding = geometry.size.height * 0.225
+            // Create mode sits 40pt higher so the full-width QR card and the share code both fit
+            let topPadding = geometry.size.height * 0.225 - (effectiveMode == .create ? 40 : 0)
 
             ZStack {
                 ZStack(alignment: .top) {
@@ -3828,11 +4386,39 @@ struct ManualPairingScreenKorean: View {
                 }
             }
             .onAppear {
-                #if DEBUG
-                if effectiveMode == .create && sharedCodeManager.generatedRoomCode.isEmpty {
+                // Create mode: make a code and register it with the server so the partner can join it
+                if effectiveMode == .create {
+                    if sharedCodeManager.generatedRoomCode.isEmpty {
+                        sharedCodeManager.generateNewCode(language: "ko")
+                    }
+                    pairingManager.createRoom(code: displayCode, direction: "ko_to_en")
+                }
+            }
+            .onDisappear {
+                pairingManager.cancelOffer()
+            }
+            .onChange(of: displayCode) { _, newCode in
+                // The debug "Create" button makes a fresh code; offer that one instead
+                if effectiveMode == .create {
+                    pairingManager.createRoom(code: newCode, direction: "ko_to_en")
+                }
+            }
+            .onChange(of: pairingManager.createFailure) { _, failure in
+                // Someone else is offering the same code right now: show a different one
+                if failure == .codeInUse, effectiveMode == .create {
                     sharedCodeManager.generateNewCode(language: "ko")
                 }
-                #endif
+            }
+            .onChange(of: pairingManager.shouldNavigateToSuccess) { _, matched in
+                // The partner joined our code, or the server accepted the code we entered
+                if matched, let roomId = pairingManager.roomId {
+                    joinSucceeded(roomId: roomId)
+                }
+            }
+            .onChange(of: pairingManager.joinFailure) { _, failure in
+                if let failure, isConnecting {
+                    joinFailed(failure)
+                }
             }
         }
     }
@@ -3934,10 +4520,7 @@ struct ManualPairingScreenKorean: View {
             .buttonStyle(PlainButtonStyle())
         }
         .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(.ultraThinMaterial)
-        )
+        .glassEffect(.regular, in: .rect(cornerRadius: 12))
         .overlay(
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Color.orange.opacity(0.3), lineWidth: 1)
@@ -3951,28 +4534,28 @@ struct ManualPairingScreenKorean: View {
             Text("QR 코드를 보여주세요:")
                 .font(AppTypography.h3Korean)
                 .foregroundColor(AppColors.primaryText)
-                .padding(.top, 32)
+                .padding(.top, 14)
 
-            // QR Code (uses cached image to prevent flickering)
+            // QR Code - full-width container like the code box below (cached to prevent flickering)
             if let qrImage = cachedQRImage {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(AppColors.cardFill.opacity(0.95))
-                        .frame(width: 242, height: 242)
-                    Image(uiImage: qrImage)
-                        .interpolation(.none)
-                        .resizable()
-                        .frame(width: 228, height: 228)
-                }
-                .codeBoxShadow()
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.top, 12)
+                Image(uiImage: qrImage)
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(1, contentMode: .fit)
+                    .padding(16)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(AppColors.cardFill.opacity(0.95))
+                    )
+                    .codeBoxShadow()
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 10)
             }
 
             Text("또는 이 코드를 공유하세요:")
                 .font(AppTypography.b2Korean)
                 .foregroundColor(AppColors.primaryText)
-                .padding(.top, 76)
+                .padding(.top, 16)
 
             HStack(alignment: .center) {
                 Text(spacedDisplayCode)
@@ -4169,11 +4752,9 @@ struct ManualPairingScreenKorean: View {
     }
 
     private var displayCode: String {
-        #if DEBUG
         if !sharedCodeManager.generatedRoomCode.isEmpty {
             return sharedCodeManager.generatedRoomCode
         }
-        #endif
         return roomCode
     }
 
@@ -4201,48 +4782,69 @@ struct ManualPairingScreenKorean: View {
 
         // Don't dismiss keyboard yet - keep it up during validation
 
+        // Ask the server to pair us with whoever created this code. `matched` or `join_failed`
+        // comes back through pairingManager (see the onChange handlers on this screen)
+        pairingManager.joinRoom(code: enteredCode, direction: "ko_to_en")
+    }
+
+    /// Both phones now share a room id: dismiss the keyboard and move on
+    private func joinSucceeded(roomId: String) {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        isCodeFieldFocused = false
+        isConnecting = false
+        showError = false
+        showErrorGlow = false
+        onSuccess?(roomId)
+    }
+
+    private func joinFailed(_ failure: PairingWebSocketManager.JoinFailure) {
+        #if DEBUG
+        // Single-device debug flow without a backend (Create here, then switch to the partner's
+        // Join screen): a code generated on this phone is accepted locally. A server that
+        // answered "unknown code" is never overridden.
+        if failure == .connection && sharedCodeManager.validateCode(enteredCode) {
+            joinSucceeded(roomId: enteredCode)
+            return
+        }
+        #if targetEnvironment(simulator)
+        // Simulator UI work with no backend: keep the old rule, codes starting with "9" fail
+        if failure == .connection && sharedCodeManager.generatedRoomCode.isEmpty && !enteredCode.hasPrefix("9") {
+            joinSucceeded(roomId: enteredCode)
+            return
+        }
+        #endif
+        #endif
+
+        // Hide connecting state before showing error
+        isConnecting = false
+
+        // Show error state with glow and text
+        withAnimation(.easeInOut(duration: 0.2)) {
+            showError = true
+            showErrorGlow = true
+        }
+        triggerErrorHaptic()
+
+        // After 0.75s, animate digits out (fade down)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
+            withAnimation(.easeInOut(duration: 0.3)) {
+                isAnimatingOut = true
+            }
+
+            // After digits fade out (0.3s), clear code and reset first box
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                enteredCode = ""
+                isAnimatingOut = false
+                // First box becomes active again, keyboard stays up
+                isCodeFieldFocused = true
+            }
+        }
+
+        // After 1 second, fade out the glow but keep error text
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            let isValid: Bool
-            if !sharedCodeManager.generatedRoomCode.isEmpty {
-                isValid = sharedCodeManager.validateCode(enteredCode)
-            } else {
-                isValid = !enteredCode.hasPrefix("9")
+            withAnimation(.easeInOut(duration: 0.3)) {
+                showErrorGlow = false
             }
-
-            if !isValid {
-                isConnecting = false
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    showError = true
-                    showErrorGlow = true
-                }
-                triggerErrorHaptic()
-
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        isAnimatingOut = true
-                    }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        enteredCode = ""
-                        isAnimatingOut = false
-                        // First box becomes active again, keyboard stays up
-                        isCodeFieldFocused = true
-                    }
-                }
-
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        showErrorGlow = false
-                    }
-                }
-                return
-            }
-
-            // Success - dismiss keyboard and navigate
-            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-            isCodeFieldFocused = false
-            showError = false
-            showErrorGlow = false
-            onSuccess?(enteredCode)
         }
     }
 
@@ -4253,14 +4855,8 @@ struct ManualPairingScreenKorean: View {
     }
 
     private func generateQRCode(from string: String) -> UIImage? {
-        let filter = CIFilter.qrCodeGenerator()
-        filter.message = Data(string.utf8)
-        guard let ciImage = filter.outputImage else { return nil }
-        let transform = CGAffineTransform(scaleX: 10, y: 10)
-        let scaledImage = ciImage.transformed(by: transform)
-        let context = CIContext()
-        guard let cgImage = context.createCGImage(scaledImage, from: scaledImage.extent) else { return nil }
-        return UIImage(cgImage: cgImage)
+        // Dotted QR with the Dari logo; encodes a pairing link (the Join scanner keeps the digits)
+        StyledQRCode.image(for: StyledQRCode.pairingPayload(code: string, language: "ko"))
     }
 
     private func triggerHaptic() {
@@ -4281,27 +4877,13 @@ struct SetupSuccessScreenKorean: View {
     var onBackTapped: (() -> Void)?
 
     @State private var hasProceeded = false
-    @State private var circleScale: CGFloat = 1.0
-    @State private var checkmarkProgress: CGFloat = 0.0
+    @State private var showCheck = false
 
     var body: some View {
         ZStack {
             VStack(alignment: .leading, spacing: 0) {
                 // Success checkmark
-                ZStack {
-                    Circle()
-                        .fill(AppColors.lightGreen.opacity(0.6))
-                        .frame(width: 48, height: 48)
-                        .scaleEffect(circleScale)
-                    Circle()
-                        .fill(AppColors.successGreen)
-                        .frame(width: 36, height: 36)
-                    CheckmarkShape()
-                        .trim(from: 0, to: checkmarkProgress)
-                        .stroke(AppColors.whiteIcon, style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
-                        .frame(width: 18, height: 18)
-                }
-                .frame(width: 48, height: 48)
+                SuccessCheckBadge(isShown: showCheck)
 
                 Text("준비 완료!")
                     .font(AppTypography.h2Korean)
@@ -4354,21 +4936,7 @@ struct SetupSuccessScreenKorean: View {
     }
 
     private func startSuccessAnimation() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            withAnimation(.easeInOut(duration: 0.3)) {
-                circleScale = 1.25
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    circleScale = 1.0
-                }
-            }
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            withAnimation(.easeOut(duration: 0.4)) {
-                checkmarkProgress = 1.0
-            }
-        }
+        showCheck = true
     }
 }
 

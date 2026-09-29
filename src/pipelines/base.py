@@ -7,7 +7,13 @@ import asyncio
 import logging
 import time
 
-from ..models import TranslationDirection, AudioOut, TranslationResult
+from ..models import (
+    TranslationDirection,
+    AudioOut,
+    TranslationResult,
+    ErrorMessage,
+    ERROR_CODE_TRANSLATION_REFUSED,
+)
 from ..session.context import SharedTranslationContext
 from ..services import STTService, TTSService, TranslatorService, PhraseBuffer
 
@@ -57,6 +63,7 @@ class BasePipeline(ABC):
         tts: TTSService,
         on_translation: Optional[Callable[[TranslationResult], None]] = None,
         on_audio: Optional[Callable[[AudioOut], None]] = None,
+        on_translation_failed: Optional[Callable[[ErrorMessage], None]] = None,
     ):
         """
         Initialize the pipeline.
@@ -69,6 +76,7 @@ class BasePipeline(ABC):
             tts: Text-to-speech service.
             on_translation: Callback for translation results.
             on_audio: Callback for audio output.
+            on_translation_failed: Callback for a segment that couldn't be translated.
         """
         self.direction = direction
         self.context = context
@@ -77,6 +85,7 @@ class BasePipeline(ABC):
         self.tts = tts
         self.on_translation = on_translation
         self.on_audio = on_audio
+        self.on_translation_failed = on_translation_failed
         self.phrase_buffer = WordBoundaryPhraseBuffer()
         self._is_running = False
         self._is_stopping = False  # True while stop() finalizes; new audio is rejected
@@ -190,6 +199,33 @@ class BasePipeline(ABC):
                 self.on_audio(msg)
         except Exception as e:
             logger.error(f"Error synthesizing audio: {e}")
+
+    def _emit_translation(self, source_text: str, translated: str, segment_id: str, **extra) -> None:
+        """Emit the finished translation text for a segment."""
+        if self.on_translation:
+            self.on_translation(TranslationResult(
+                direction=self.direction,
+                original=source_text,
+                translated=translated,
+                segment_id=segment_id,
+                **extra,
+            ))
+
+    def _emit_translation_failed(self, source_text: str, segment_id: str, code: str) -> None:
+        """Report a segment that couldn't be translated, so no one waits for its text."""
+        if self.on_translation_failed:
+            if code == ERROR_CODE_TRANSLATION_REFUSED:
+                message = "Couldn't translate that - please rephrase."
+            else:
+                message = "Translation failed - please try again."
+            self.on_translation_failed(ErrorMessage(
+                direction=self.direction,
+                message=message,
+                recoverable=True,
+                code=code,
+                segment_id=segment_id,
+                original=source_text,
+            ))
 
     @property
     def is_running(self) -> bool:
