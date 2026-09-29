@@ -2700,8 +2700,8 @@ struct SetupSuccessScreen: View {
                 startSuccessAnimation()
             }
 
-            // Auto-proceed after 3.5 seconds (3s after animation starts)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) {
+            // Auto-proceed 200ms after the check badge settles
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5 + SuccessCheckBadge.playDuration + 0.2) {
                 guard !hasProceeded else { return }
                 hasProceeded = true
                 onProceed?()
@@ -2738,6 +2738,10 @@ struct SuccessCheckBadge: View {
     private static let haloOpen = Animation.timingCurve(0.31, 2.34, 0.64, 1, duration: 0.41)
     // Halo back: 360ms, cubic-bezier(0.34, 1.9, 0.64, 1) — softer spring
     private static let haloClose = Animation.timingCurve(0.34, 1.9, 0.64, 1, duration: 0.36)
+
+    /// From `isShown` until the whole badge has finished: the halo settling back (0.1 + 0.41 + 0.36s)
+    /// ends after the check draw (0.08 + 0.5s) and the appear (0.5s)
+    static let playDuration: Double = 0.1 + 0.41 + 0.36
 
     var body: some View {
         ZStack {
@@ -2835,6 +2839,14 @@ struct LiveTranslationScreen: View {
     // MARK: - Session State
     @State private var isSessionActive: Bool = false  // true only while mic capture is actually running
     @State private var hasStartedOnce: Bool = false  // Track if session was ever started (for hiding instruction text)
+    @State private var isPaused: Bool = false  // Paused after starting: Play shows, More and Stop stay out
+
+    // MARK: - Mic Menu State
+    // The voice & honorifics cards the mic button lifts to show. Local for now: not sent to the server yet.
+    @State private var isMicMenuOpen: Bool = false
+    @State private var voiceChoice: VoiceChoice = .defaultFemale
+    @State private var honorificsOn: Bool = true
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isConnected: Bool = false  // true once session_started received; false = needs re-join
     @State private var isPartnerConnected: Bool = false
     @State private var isJoining: Bool = false  // Room join in flight (waiting for session_started)
@@ -2872,6 +2884,27 @@ struct LiveTranslationScreen: View {
         // When user speaks Korean, show UI in Korean
         !iSpeakEnglish
     }
+
+    /// The voice the partner hears me in; Figma shows Default (F) until it's changed
+    private enum VoiceChoice { case defaultFemale, female, male }
+
+    private var voiceTitle: String {
+        switch voiceChoice {
+        case .defaultFemale: return isKorean ? "목소리: 기본 (여)" : "Voice: Default (F)"
+        case .female: return isKorean ? "목소리: 여성" : "Voice: Female"
+        case .male: return isKorean ? "목소리: 남성" : "Voice: Male"
+        }
+    }
+
+    private var honorificsTitle: String {
+        if isKorean { return honorificsOn ? "존댓말: 켜짐" : "존댓말: 꺼짐" }
+        return honorificsOn ? "Honorifics: ON" : "Honorifics: OFF"
+    }
+
+    // Figma: the cards sit 52pt from the screen bottom with the pill 16pt above them, so the mic
+    // button (60pt up at rest) rises 52 + 88 + 16 - 60 = 96pt
+    private static let micMenuBottom: CGFloat = 52
+    private static let micMenuLift: CGFloat = 96
 
     /// User's language enum for WebSocket
     private var userLanguage: UserLanguage {
@@ -2961,17 +2994,39 @@ struct LiveTranslationScreen: View {
                 Spacer()
             }
 
-            // Mic button - exactly 60pt from actual screen bottom edge
+            // Voice & honorifics cards - 52pt from the screen bottom, uncovered by the lifted mic button
+            VStack {
+                Spacer()
+                if isMicMenuOpen {
+                    MicMenuCards(
+                        isMaleVoice: voiceChoice == .male,
+                        voiceTitle: voiceTitle,
+                        honorificsTitle: honorificsTitle,
+                        isKorean: isKorean,
+                        onVoiceTapped: { voiceChoice = voiceChoice == .male ? .female : .male },
+                        onHonorificsTapped: { honorificsOn.toggle() }
+                    )
+                    .transition(.micMenuReveal)
+                }
+            }
+            .ignoresSafeArea(edges: .bottom)
+            .padding(.bottom, Self.micMenuBottom)
+
+            // Mic button - exactly 60pt from actual screen bottom edge, lifted while the menu is open
             VStack {
                 Spacer()
                 MicButton(
                     isSessionActive: $isSessionActive,
+                    isPaused: isPaused,
+                    isMenuOpen: isMicMenuOpen,
+                    lift: isMicMenuOpen ? Self.micMenuLift : 0,
                     onMicTapped: {
                         if isSessionActive {
-                            // Pause: stop the mic but stay in the room
+                            // Pause: stop the mic but stay in the room; Pause swaps to Play
                             withAnimation {
                                 isSessionActive = false
                             }
+                            isPaused = true
                             stopAudioCapture()
                         } else if isConnected {
                             startAudioCapture()
@@ -2985,12 +3040,15 @@ struct LiveTranslationScreen: View {
                         }
                     },
                     onMoreTapped: {
-                        // TODO: Handle more button tap
+                        withAnimation(reduceMotion ? nil : MicMenuCards.revealAnimation) {
+                            isMicMenuOpen.toggle()
+                        }
                     },
                     onStopTapped: {
                         withAnimation {
                             isSessionActive = false
                         }
+                        isPaused = false
                         stopAudioCapture()
                         endSession()
                     }
@@ -2998,6 +3056,14 @@ struct LiveTranslationScreen: View {
             }
             .ignoresSafeArea(edges: .bottom)
             .padding(.bottom, 60)
+            .onChange(of: isSessionActive || isPaused) { _, buttonsOut in
+                // More (and its X) went back into the mic, so put the menu away with it
+                if !buttonsOut && isMicMenuOpen {
+                    withAnimation(reduceMotion ? nil : MicMenuCards.revealAnimation) {
+                        isMicMenuOpen = false
+                    }
+                }
+            }
 
             // Debug overlay (bottom right)
             #if DEBUG
@@ -3297,6 +3363,7 @@ struct LiveTranslationScreen: View {
                 isSessionActive = true
                 hasStartedOnce = true
             }
+            isPaused = false
         }
     }
 
@@ -4930,8 +4997,8 @@ struct SetupSuccessScreenKorean: View {
                 startSuccessAnimation()
             }
 
-            // Auto-proceed after 3.5 seconds (3s after animation starts)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) {
+            // Auto-proceed 200ms after the check badge settles
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5 + SuccessCheckBadge.playDuration + 0.2) {
                 guard !hasProceeded else { return }
                 hasProceeded = true
                 onProceed?()
