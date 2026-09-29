@@ -19,6 +19,7 @@ from ...models import (
 )
 from ...session.context import SharedTranslationContext
 from ...services import STTService, TTSService, TranslatorService
+from ...services.translator import TranslationRefused
 
 logger = logging.getLogger(__name__)
 
@@ -258,6 +259,10 @@ class KrToEnPipeline(BasePipeline):
                 )
                 self.on_translation(msg)
 
+        except TranslationRefused as e:
+            # Expected policy decline (already logged by the translator) - drop the partial
+            logger.warning(f"KO->EN segment {segment_id} not translated: {e}")
+            self.phrase_buffer.clear()
         except Exception as e:
             logger.error(f"Error in translate_and_speak: {e}")
             # Drop partial tokens so they don't leak into the next utterance's audio
