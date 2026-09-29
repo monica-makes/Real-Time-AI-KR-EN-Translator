@@ -22,6 +22,9 @@ from ...services import STTService, TTSService, TranslatorService
 
 logger = logging.getLogger(__name__)
 
+# Deepgram punctuates sentence ends (punctuate/smart_format)
+SENTENCE_PUNCTUATION = (".", "?", "!")
+
 
 class KrToEnPipeline(BasePipeline):
     """
@@ -71,6 +74,7 @@ class KrToEnPipeline(BasePipeline):
         self.clause_detector = KoreanClauseDetector()
         self.classifier = SafetyClassifier()
         self._last_interim_text: Optional[str] = None  # Track last interim for short audio handling
+        self._last_interim_ms = 0  # Start of the last interim (Deepgram stream time)
         self._had_final_since_interim = False  # Track if we got a final after interim
 
     async def start(self) -> None:
@@ -91,31 +95,36 @@ class KrToEnPipeline(BasePipeline):
 
     async def stop(self) -> None:
         """Stop the pipeline."""
-        if not self._is_running:
+        if not self._is_running or self._is_stopping:
             return
 
-        self._is_running = False
+        # Reject new audio but keep the results loop running so final
+        # transcripts returned for the finalize signal are still translated
+        self._is_stopping = True
+        try:
+            await self._finalize_and_flush()
+        except Exception as e:
+            logger.error(f"KO->EN: error flushing on stop: {e}")
+        finally:
+            # Always tear down, even if the flush failed or stop() was cancelled,
+            # so KeepAlive doesn't hold an orphaned Deepgram stream open
+            self._is_running = False
+            self._is_stopping = False
 
-        # Signal end of audio to get final transcripts
-        await self.stt.finalize()
+            # Cancel tasks
+            for task in self._tasks:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
 
-        # Flush remaining content
-        await self._flush_remaining()
-
-        # Cancel tasks
-        for task in self._tasks:
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
-
-        await self.stt.disconnect()
-        logger.info("KO->EN pipeline stopped")
+            await self.stt.disconnect()
+            logger.info("KO->EN pipeline stopped")
 
     async def process_audio(self, audio_data: bytes, timestamp_ms: int = 0) -> None:
         """Process incoming Korean audio."""
-        if not self._is_running:
+        if not self._is_running or self._is_stopping:
             return
         await self.stt.send_audio(audio_data)
 
@@ -126,47 +135,63 @@ class KrToEnPipeline(BasePipeline):
                 if not self._is_running:
                     break
 
-                # Handle utterance end event - flush any buffered content
-                if result.is_utterance_end:
-                    logger.debug("KO->EN: Utterance ended, flushing buffers")
-                    await self._flush_remaining()
-                    continue
+                # Hold the results lock so stop() flushes only after this result is done
+                async with self._processing_result():
+                    # Handle utterance end event - flush any buffered content
+                    if result.is_utterance_end:
+                        logger.debug("KO->EN: Utterance ended, flushing buffers")
+                        await self._flush_remaining(utterance_end_ms=result.last_word_end_ms)
+                        continue
 
-                # Handle interim results (for UI feedback)
-                if not result.is_final:
-                    if result.text:
-                        # Track last interim for short audio handling
-                        self._last_interim_text = result.text
-                        self._had_final_since_interim = False
-                        if self.on_interim:
-                            msg = TranscriptInterim(
-                                direction=TranslationDirection.KO_TO_EN,
-                                text=result.text,
-                            )
-                            self.on_interim(msg)
-                    continue
+                    # Handle interim results (for UI feedback)
+                    if not result.is_final:
+                        if result.text:
+                            # Track last interim for short audio handling
+                            self._last_interim_text = result.text
+                            self._last_interim_ms = result.timestamp_ms
+                            self._had_final_since_interim = False
+                            if self.on_interim:
+                                msg = TranscriptInterim(
+                                    direction=TranslationDirection.KO_TO_EN,
+                                    text=result.text,
+                                )
+                                self.on_interim(msg)
+                        continue
 
-                # Skip empty results (silence filtered by VAD)
-                if not result.text:
-                    continue
+                    # Skip empty results (silence filtered by VAD)
+                    if not result.text:
+                        continue
 
-                # Mark that we got a final result
-                self._had_final_since_interim = True
+                    # Mark that we got a final result
+                    self._had_final_since_interim = True
 
-                # Process final result through clause detector
-                # Split into words and process each
-                words = result.text.split()
-                for word in words:
-                    clause = self.clause_detector.add_word(
-                        word, result.timestamp_ms
-                    )
-                    if clause:
-                        await self._process_clause(clause)
+                    # Process final result through clause detector
+                    await self._process_words(result.text, result.timestamp_ms)
+
+                    # Deepgram marked the end of speech: translate what's buffered now
+                    # rather than waiting for UtteranceEnd, which needs more audio
+                    # and never comes if the user pauses the mic
+                    if result.speech_final:
+                        await self._flush_remaining()
 
         except asyncio.CancelledError:
             pass
         except Exception as e:
             logger.error(f"Error processing STT results: {e}")
+
+    async def _process_words(self, text: str, timestamp_ms: int) -> None:
+        """Split transcript text into words and process each through the clause detector."""
+        for word in text.split():
+            clause = self.clause_detector.add_word(word, timestamp_ms)
+            if clause:
+                await self._process_clause(clause)
+
+            if word.endswith(SENTENCE_PUNCTUATION):
+                # Punctuation hides the Korean ending ("안녕하세요.") from the
+                # clause detector, so close the sentence here
+                clause = self.clause_detector.force_flush()
+                if clause:
+                    await self._process_clause(clause)
 
     async def _process_clause(self, clause) -> None:
         """Process a detected clause through classifier and translation."""
@@ -235,18 +260,23 @@ class KrToEnPipeline(BasePipeline):
 
         except Exception as e:
             logger.error(f"Error in translate_and_speak: {e}")
+            # Drop partial tokens so they don't leak into the next utterance's audio
+            self.phrase_buffer.clear()
 
-    async def _flush_remaining(self) -> None:
+    async def _flush_remaining(self, utterance_end_ms: Optional[int] = None) -> None:
         """Flush any remaining content in buffers."""
-        # Handle pending interim text (for short audio that never got a final)
-        if self._last_interim_text and not self._had_final_since_interim:
+        # Handle pending interim text (for short audio that never got a final).
+        # Skip an interim that started after the utterance Deepgram just ended
+        # (late UtteranceEnd after a mic pause): it's the next utterance and its
+        # final is still coming, so processing it here would glue and duplicate it
+        if (
+            self._last_interim_text
+            and not self._had_final_since_interim
+            and (utterance_end_ms is None or self._last_interim_ms < utterance_end_ms)
+        ):
             logger.info(f"KO->EN: Processing pending interim as final: {self._last_interim_text}")
             # Process the interim text as if it were final
-            words = self._last_interim_text.split()
-            for word in words:
-                clause = self.clause_detector.add_word(word, 0)
-                if clause:
-                    await self._process_clause(clause)
+            await self._process_words(self._last_interim_text, 0)
             self._last_interim_text = None
 
         # Flush clause detector

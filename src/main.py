@@ -62,13 +62,22 @@ class ConversationRoom:
         partner_lang = "ko" if my_language == "en" else "en"
         return self.participants.get(partner_lang)
 
-    def remove_participant(self, language: str):
-        """Remove a participant from the room."""
+    def remove_participant(self, language: str, websocket: Optional[WebSocket] = None) -> bool:
+        """
+        Remove a participant from the room.
+
+        With websocket, only removes the entry if it still belongs to that socket,
+        so a stale connection closing late (e.g. the user re-joined on a new socket
+        after Stop) can't evict the newer one. Returns True if removed.
+        """
+        if websocket is not None and self.participants.get(language) is not websocket:
+            return False
         if language in self.participants:
             del self.participants[language]
         if language in self.orchestrators:
             del self.orchestrators[language]
         logger.info(f"[Room {self.room_id}] Removed {language} participant")
+        return True
 
     def is_empty(self) -> bool:
         """Check if the room has no participants."""
@@ -105,6 +114,7 @@ class ConversationRoom:
                 await target_socket.send_text(json.dumps({
                     "type": "audio",
                     "direction": direction,
+                    "format": "mp3",
                     "data": base64.b64encode(audio_data).decode()
                 }))
                 logger.debug(f"[Room {self.room_id}] Routed {len(audio_data)} bytes to {target_lang}")
@@ -510,6 +520,11 @@ async def websocket_translate(websocket: WebSocket):
         )
         await orch.start()
 
+        # A previous socket's cleanup may have deleted this room as empty while we were
+        # starting (quick re-join after Stop) - re-register it so a partner can still find it
+        if room.room_id not in rooms:
+            rooms[room.room_id] = room
+
         # Add to room
         room.add_participant(user_lang, websocket, orch)
 
@@ -519,17 +534,33 @@ async def websocket_translate(websocket: WebSocket):
         while True:
             message = await websocket.receive()
 
+            if message.get("type") == "websocket.disconnect":
+                # Client closed the socket; calling receive() again would raise RuntimeError
+                raise WebSocketDisconnect(message.get("code", 1000))
+
             if "text" in message:
                 try:
                     data = json.loads(message["text"])
                     msg_type = data.get("type")
 
-                    # Log all received messages for debugging
-                    logger.info(f"Received message: {data}")
+                    # Log received messages for debugging (audio chunks are logged
+                    # at DEBUG below, without their base64 payload)
+                    if msg_type != "audio_chunk":
+                        logger.info(f"Received message: {data}")
 
                     # Handle both "session_start" and "start_session"
                     if msg_type in ("session_start", "start_session"):
                         logger.info(f"Processing session start: {data}")
+
+                        # Clean up existing session (before user_language is replaced)
+                        if orchestrator:
+                            await orchestrator.stop()
+                        if session:
+                            session_manager.end_session(session.id)
+                        if room and user_language:
+                            room.remove_participant(user_language, websocket)
+                            if room.is_empty() and rooms.get(room.room_id) is room:
+                                del rooms[room.room_id]
 
                         # Parse user language (new room-based protocol)
                         user_language = data.get("user_language")
@@ -538,16 +569,6 @@ async def websocket_translate(websocket: WebSocket):
                         wifi_identifier = data.get("wifi_identifier")
                         config = data.get("config", {})
                         honorific_mode = config.get("honorific_mode", data.get("honorific_mode", False))
-
-                        # Clean up existing session
-                        if orchestrator:
-                            await orchestrator.stop()
-                        if session:
-                            session_manager.end_session(session.id)
-                        if room and user_language:
-                            room.remove_participant(user_language)
-                            if room.is_empty() and room.room_id in rooms:
-                                del rooms[room.room_id]
 
                         # ========== WIFI AUTO-PAIRING MODE ==========
                         if pairing_mode == "wifi_auto" and wifi_identifier and user_language:
@@ -797,19 +818,19 @@ async def websocket_translate(websocket: WebSocket):
 
         # Notify partner and clean up room
         if room and user_language:
-            # Notify partner
-            partner_socket = room.get_partner_socket(user_language)
-            if partner_socket:
-                try:
-                    await partner_socket.send_text(json.dumps({"type": "partner_left"}))
-                except:
-                    pass
-
-            # Remove from room
-            room.remove_participant(user_language)
+            # Remove from room, unless the user already re-joined on a newer socket
+            # (e.g. mic tap right after Stop while this handler was still in stop())
+            if room.remove_participant(user_language, websocket):
+                # Notify partner
+                partner_socket = room.get_partner_socket(user_language)
+                if partner_socket:
+                    try:
+                        await partner_socket.send_text(json.dumps({"type": "partner_left"}))
+                    except:
+                        pass
 
             # Clean up empty rooms
-            if room.is_empty() and room.room_id in rooms:
+            if room.is_empty() and rooms.get(room.room_id) is room:
                 del rooms[room.room_id]
                 logger.info(f"Deleted empty room {room.room_id}")
 
@@ -1067,4 +1088,4 @@ async def websocket_pair(websocket: WebSocket, direction: str = "ko_to_en"):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host=settings.host, port=settings.port)

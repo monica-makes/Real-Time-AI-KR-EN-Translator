@@ -13,17 +13,45 @@ class AudioPlaybackService: NSObject, ObservableObject {
     @Published private(set) var isPlaying: Bool = false
     @Published private(set) var queueCount: Int = 0
 
+    /// True while translated audio is playing and for a short tail after the last queued clip,
+    /// so capture can avoid re-transcribing our own speaker output
+    @Published private(set) var isOutputActive: Bool = false
+
     // MARK: - Private Properties
 
     private var audioPlayer: AVAudioPlayer?
     private var audioQueue: [Data] = []
     private var isProcessingQueue: Bool = false
 
+    // Covers output latency + room echo after the last clip ends
+    private let outputTailNanoseconds: UInt64 = 350_000_000  // 0.35 seconds
+    private var outputTailTask: Task<Void, Never>?
+
     // MARK: - Initialization
 
     override init() {
         super.init()
         setupAudioSession()
+        observeInterruptions()
+    }
+
+    /// A phone call / Siri pauses the player without calling its delegate, which would leave
+    /// isOutputActive stuck on (and the echo guard muting the mic). Drop the queue instead.
+    private func observeInterruptions() {
+        #if os(iOS)
+        NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] notification in
+            guard let rawType = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+                  AVAudioSession.InterruptionType(rawValue: rawType) == .began else { return }
+            Task { @MainActor in
+                print("[AudioPlaybackService] Audio session interrupted - clearing playback")
+                self?.stopAndClear()
+            }
+        }
+        #endif
     }
 
     private func setupAudioSession() {
@@ -47,7 +75,7 @@ class AudioPlaybackService: NSObject, ObservableObject {
     }
 
     /// Queue audio data for playback
-    /// - Parameter data: Audio data (MP3 or other format supported by AVAudioPlayer)
+    /// - Parameter data: One complete MP3 clip (backend sends one per phrase)
     func queueAudio(_ data: Data) {
         audioQueue.append(data)
         queueCount = audioQueue.count
@@ -79,6 +107,10 @@ class AudioPlaybackService: NSObject, ObservableObject {
         isPlaying = false
         isProcessingQueue = false
 
+        outputTailTask?.cancel()
+        outputTailTask = nil
+        isOutputActive = false
+
         print("[AudioPlaybackService] Stopped and cleared queue")
     }
 
@@ -94,6 +126,7 @@ class AudioPlaybackService: NSObject, ObservableObject {
         guard !audioQueue.isEmpty else {
             isProcessingQueue = false
             isPlaying = false
+            scheduleOutputInactive()
             return
         }
 
@@ -101,12 +134,13 @@ class AudioPlaybackService: NSObject, ObservableObject {
         queueCount = audioQueue.count
 
         do {
-            audioPlayer = try AVAudioPlayer(data: audioData)
+            audioPlayer = try AVAudioPlayer(data: audioData, fileTypeHint: AVFileType.mp3.rawValue)
             audioPlayer?.delegate = self
             audioPlayer?.prepareToPlay()
 
             if audioPlayer?.play() == true {
                 isPlaying = true
+                markOutputActive()
                 print("[AudioPlaybackService] Playing audio, remaining in queue: \(audioQueue.count)")
             } else {
                 print("[AudioPlaybackService] Failed to start playback")
@@ -115,6 +149,28 @@ class AudioPlaybackService: NSObject, ObservableObject {
         } catch {
             print("[AudioPlaybackService] Error creating player: \(error)")
             playNextInQueue()
+        }
+    }
+
+    private func markOutputActive() {
+        outputTailTask?.cancel()
+        outputTailTask = nil
+        if !isOutputActive {
+            isOutputActive = true
+        }
+    }
+
+    /// Queue drained - keep isOutputActive true for a short tail, then clear it
+    private func scheduleOutputInactive() {
+        guard isOutputActive else { return }
+
+        let tail = outputTailNanoseconds
+        outputTailTask?.cancel()
+        outputTailTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: tail)
+            guard let self, !Task.isCancelled, !self.isPlaying else { return }
+            self.isOutputActive = false
+            self.outputTailTask = nil
         }
     }
 }

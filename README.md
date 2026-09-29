@@ -76,12 +76,19 @@ cp .env.example .env
 # Edit .env with your API keys
 ```
 
-3. Run the server:
+3. Run the server from the repo root:
 ```bash
-uvicorn src.main:app --reload
+.venv/bin/python -m uvicorn src.main:app --host 0.0.0.0 --port 8001
 ```
 
-4. Connect via WebSocket at `ws://localhost:8000/ws/translate`
+- Port `8001` matches the iOS app's default server address.
+- `--host 0.0.0.0` is needed for a physical iPhone to reach the Mac over Wi-Fi (the default `127.0.0.1` only accepts connections from the Mac itself).
+- Both WebSocket endpoints are served on this port: `/ws/translate` (translation) and `/ws/pair` (Wi-Fi pairing).
+- `.venv/bin/python -m src.main` starts the same server using `HOST`/`PORT` from `.env` (defaults `0.0.0.0` and `8001`).
+
+4. Connect the iOS app:
+- **Simulator:** connects to `localhost`, i.e. `ws://localhost:8001/ws/translate`.
+- **Physical iPhone:** connects to the Mac's Bonjour name (`monicas-MacBook-Pro.local`, see `ServerConfig` in `WebSocketManager.swift`); the phone and Mac must be on the same Wi-Fi network. If that name doesn't resolve on your network, pass the Mac's LAN IP with the app's `-serverHost` launch argument (Xcode > Edit Scheme > Run > Arguments), e.g. `-serverHost 192.168.1.23`. Get the IP with `ipconfig getifaddr en0`. If you run the server on a port other than 8001, also pass `-serverPort <port>`.
 
 ## WebSocket Protocol
 

@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     # Logging
     log_level: str = "INFO"
 
+    # Server address (0.0.0.0 so a physical iPhone on the LAN can connect;
+    # 8001 matches the iOS app's default)
+    host: str = "0.0.0.0"
+    port: int = 8001
+
     # Korean -> English pipeline settings
     ko_clause_timeout_ms: int = 3000
     ko_pause_threshold_ms: int = 300

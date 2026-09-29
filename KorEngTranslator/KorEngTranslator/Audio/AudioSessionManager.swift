@@ -163,6 +163,18 @@ class AudioSessionManager: ObservableObject {
         return false
     }
 
+    /// True when playback goes to the phone's own speaker/receiver, where the mic can hear it
+    /// (echo risk). The Simulator plays through the Mac's speakers, so it counts as speaker.
+    nonisolated static func isOutputOnBuiltInSpeaker() -> Bool {
+        #if targetEnvironment(simulator)
+        return true
+        #else
+        return AVAudioSession.sharedInstance().currentRoute.outputs.contains { output in
+            output.portType == .builtInSpeaker || output.portType == .builtInReceiver
+        }
+        #endif
+    }
+
     /// Get human-readable description of current audio route
     func getCurrentRouteDescription() -> String {
         let route = audioSession.currentRoute

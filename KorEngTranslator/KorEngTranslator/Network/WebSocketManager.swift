@@ -1,6 +1,41 @@
 import Foundation
 import Combine
 
+/// Backend server location - single source of truth for /ws/translate and /ws/pair
+/// Override from the Xcode scheme's launch arguments: -serverHost 192.168.x.x -serverPort 8001
+enum ServerConfig {
+    static var host: String {
+        if let override = UserDefaults.standard.string(forKey: "serverHost")?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !override.isEmpty {
+            return override
+        }
+        #if targetEnvironment(simulator)
+        return "localhost"
+        #else
+        return "monicas-MacBook-Pro.local"  // This Mac's Bonjour name (survives IP changes); override with -serverHost
+        #endif
+    }
+
+    static var port: Int {
+        let override = UserDefaults.standard.integer(forKey: "serverPort")
+        return override > 0 ? override : 8001
+    }
+
+    /// Translation session endpoint
+    static var translateURL: String {
+        "ws://\(host):\(port)/ws/translate"
+    }
+
+    /// WiFi pairing endpoint (same server as translation)
+    /// - Parameters:
+    ///   - direction: Pairing direction (e.g. "ko_to_en")
+    ///   - host: Optional host override (defaults to ServerConfig.host)
+    static func pairURL(direction: String, host: String? = nil) -> String {
+        "ws://\(host ?? self.host):\(port)/ws/pair?direction=\(direction)"
+    }
+}
+
 /// Connection state for the WebSocket
 enum ConnectionState: Equatable {
     case disconnected
@@ -75,7 +110,8 @@ class WebSocketManager: ObservableObject {
     var onPairingTimeout: (() -> Void)?
     var onMyTranscription: ((String) -> Void)?
     var onPartnerTranslation: ((String, String) -> Void)?  // (original, translated)
-    var onError: ((String) -> Void)?
+    var onError: ((String) -> Void)?  // Server-reported error; connection stays up
+    var onDisconnected: ((String) -> Void)?  // Transport failure (socket dropped / unreachable)
 
     // MARK: - Private Properties
 
@@ -86,8 +122,8 @@ class WebSocketManager: ObservableObject {
     /// User's language - determines audio routing direction
     private var userLanguage: UserLanguage = .english
 
-    // Default backend URL
-    private static let defaultURL = "ws://localhost:8001/ws/translate"
+    // Default backend URL (read at connect time so launch-argument overrides apply)
+    private static var defaultURL: String { ServerConfig.translateURL }
 
     // MARK: - Computed Properties
 
@@ -112,7 +148,7 @@ class WebSocketManager: ObservableObject {
     ///   - userLanguage: The language this user speaks ("en" or "kr")
     ///   - wifiIdentifier: Hash of the WiFi BSSID/SSID
     ///   - honorificMode: Whether to use honorific translations
-    ///   - urlString: WebSocket URL (defaults to localhost)
+    ///   - urlString: WebSocket URL (defaults to ServerConfig.translateURL)
     func connectWithWiFiAutoPairing(
         userLanguage: UserLanguage,
         wifiIdentifier: String,
@@ -156,7 +192,7 @@ class WebSocketManager: ObservableObject {
     /// - Parameters:
     ///   - userLanguage: The language this user speaks
     ///   - honorificMode: Whether to use honorific translations
-    ///   - urlString: WebSocket URL (defaults to localhost)
+    ///   - urlString: WebSocket URL (defaults to ServerConfig.translateURL)
     func createRoom(
         userLanguage: UserLanguage,
         honorificMode: Bool = false,
@@ -199,7 +235,7 @@ class WebSocketManager: ObservableObject {
     ///   - roomId: The room code to join
     ///   - userLanguage: The language this user speaks
     ///   - honorificMode: Whether to use honorific translations
-    ///   - urlString: WebSocket URL (defaults to localhost)
+    ///   - urlString: WebSocket URL (defaults to ServerConfig.translateURL)
     func joinRoom(
         roomId: String,
         userLanguage: UserLanguage,
@@ -216,16 +252,33 @@ class WebSocketManager: ObservableObject {
             print("[WebSocketManager] Invalid URL")
             connectionState = .error("Invalid URL")
             pairingStatus = .failed(message: "Invalid URL")
+            onDisconnected?("Invalid URL")  // Let the caller reset its joining state
+            return
+        }
+
+        // Socket still up (e.g. re-join after Stop): start a new session on it instead of
+        // reconnecting, so the translation/audio the server is still flushing from the
+        // previous session isn't lost. The server handles start_session after that flush.
+        if let task = webSocketTask, task.state == .running,
+           connectionState.isConnected, serverURL == url {
+            let message = StartSessionMessage(
+                roomId: roomId,
+                userLanguage: userLanguage,
+                honorificMode: honorificMode
+            )
+            sendCodable(message)
             return
         }
 
         disconnect()
         establishConnection(to: url)
+        let joinTask = webSocketTask
 
         // Send start session with roomId
         Task {
             try? await Task.sleep(nanoseconds: 500_000_000)
-            if self.webSocketTask?.state == .running {
+            // Skip if this socket already failed or was replaced by a newer join
+            if let joinTask, self.webSocketTask === joinTask, joinTask.state == .running {
                 self.connectionState = .connected
                 self.delegate?.webSocketManager(self, didChangeState: .connected)
 
@@ -241,7 +294,7 @@ class WebSocketManager: ObservableObject {
 
     /// Legacy connect method for backward compatibility
     /// - Parameters:
-    ///   - urlString: WebSocket URL (defaults to localhost)
+    ///   - urlString: WebSocket URL (defaults to ServerConfig.translateURL)
     ///   - direction: Translation direction for the session
     func connect(to urlString: String? = nil, direction: TranslationDirection = .koreanToEnglish) {
         // Infer user language from direction
@@ -430,9 +483,13 @@ class WebSocketManager: ObservableObject {
     }
 
     private func receiveMessage() {
-        webSocketTask?.receive { [weak self] result in
+        guard let task = webSocketTask else { return }
+        task.receive { [weak self] result in
             Task { @MainActor in
-                self?.handleReceiveResult(result)
+                // Ignore results from a socket we already closed or replaced (e.g. re-join),
+                // otherwise its cancellation error would tear down the new connection's state
+                guard let self, self.webSocketTask === task else { return }
+                self.handleReceiveResult(result)
             }
         }
     }
@@ -447,14 +504,21 @@ class WebSocketManager: ObservableObject {
         case .failure(let error):
             print("[WebSocketManager] Receive error: \(error)")
 
-            // Check if it's a cancellation (intentional disconnect)
+            // Transport failure - the only place (besides connect/disconnect) that changes connectionState
             if (error as NSError).code == 57 {  // Socket not connected
                 connectionState = .disconnected
             } else {
                 connectionState = .error(error.localizedDescription)
             }
+            isPartnerConnected = false
+
+            // Socket is dead - release it so pending start tasks don't treat it as running
+            webSocketTask = nil
+            urlSession?.invalidateAndCancel()
+            urlSession = nil
 
             delegate?.webSocketManager(self, didReceiveError: error)
+            onDisconnected?(error.localizedDescription)
         }
     }
 
@@ -531,8 +595,9 @@ class WebSocketManager: ObservableObject {
             print("[WebSocketManager] Audio out header: direction=\(msg.direction ?? "unknown"), format=\(msg.format ?? "unknown")")
 
         case .error(let msg):
+            // Server-side error (e.g. "No active session") - the socket is still usable,
+            // so keep connectionState; only transport failures change it
             print("[WebSocketManager] Server error: \(msg.message)")
-            connectionState = .error(msg.message)
             onError?(msg.message)
 
         case .status(let msg):

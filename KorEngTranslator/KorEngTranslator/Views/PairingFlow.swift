@@ -227,8 +227,10 @@ class PairingWebSocketManager: ObservableObject {
         self.direction = direction
     }
 
-    func connect(serverIP: String = "localhost", timeoutSeconds: Double = 8.0) {
-        let urlString = "ws://\(serverIP):8000/ws/pair?direction=\(direction)"
+    /// - Parameter serverIP: Optional host override (defaults to ServerConfig.host)
+    func connect(serverIP: String? = nil, timeoutSeconds: Double = 8.0) {
+        let urlString = ServerConfig.pairURL(direction: direction, host: serverIP)
+        print("[PairingWS] Connecting to: \(urlString)")
         guard let url = URL(string: urlString) else {
             print("[PairingWS] Invalid URL")
             handleConnectionFailure()
@@ -2542,10 +2544,12 @@ struct LiveTranslationScreen: View {
     @State private var languageOpacity: Double = 1.0  // For fade animation
 
     // MARK: - Session State
-    @State private var isSessionActive: Bool = false
+    @State private var isSessionActive: Bool = false  // true only while mic capture is actually running
     @State private var hasStartedOnce: Bool = false  // Track if session was ever started (for hiding instruction text)
-    @State private var isConnected: Bool = false
+    @State private var isConnected: Bool = false  // true once session_started received; false = needs re-join
     @State private var isPartnerConnected: Bool = false
+    @State private var isJoining: Bool = false  // Room join in flight (waiting for session_started)
+    @State private var pendingCaptureStart: Bool = false  // Start capture as soon as the join completes
 
     // MARK: - Translation Display State
     @State private var myLastUtterance: String = ""
@@ -2646,16 +2650,21 @@ struct LiveTranslationScreen: View {
                 MicButton(
                     isSessionActive: $isSessionActive,
                     onMicTapped: {
-                        withAnimation {
-                            isSessionActive.toggle()
-                            if isSessionActive {
-                                hasStartedOnce = true
-                            }
-                        }
                         if isSessionActive {
+                            // Pause: stop the mic but stay in the room
+                            withAnimation {
+                                isSessionActive = false
+                            }
+                            stopAudioCapture()
+                        } else if isConnected {
                             startAudioCapture()
                         } else {
-                            stopAudioCapture()
+                            // Not in a live session (backend started late, connection dropped,
+                            // or after Stop) - re-join and start capture once session_started arrives
+                            pendingCaptureStart = true
+                            if !isJoining {
+                                connectToRoom()
+                            }
                         }
                     },
                     onMoreTapped: {
@@ -2760,7 +2769,14 @@ struct LiveTranslationScreen: View {
         webSocket.onSessionStarted = { roomId in
             DispatchQueue.main.async {
                 isConnected = true
+                isJoining = false
                 print("[LiveTranslation] Session started in room: \(roomId)")
+
+                // Mic was tapped while we were (re)joining - start capture now
+                if pendingCaptureStart {
+                    pendingCaptureStart = false
+                    startAudioCapture()
+                }
             }
         }
 
@@ -2799,11 +2815,37 @@ struct LiveTranslationScreen: View {
         }
 
         webSocket.onError = { errorMessage in
-            print("[LiveTranslation] Error: \(errorMessage)")
+            DispatchQueue.main.async {
+                print("[LiveTranslation] Error: \(errorMessage)")
+
+                // Server error while (re)joining means the join failed - let the next mic tap retry
+                if isJoining {
+                    isJoining = false
+                    pendingCaptureStart = false
+                }
+            }
+        }
+
+        webSocket.onDisconnected = { reason in
+            DispatchQueue.main.async {
+                print("[LiveTranslation] Connection lost: \(reason)")
+
+                // Reflect reality in the pill and mic; next mic tap re-joins the room
+                isConnected = false
+                isPartnerConnected = false
+                isJoining = false
+                pendingCaptureStart = false
+                withAnimation {
+                    isSessionActive = false
+                }
+                stopAudioCapture()
+            }
         }
     }
 
     private func connectToRoom() {
+        isJoining = true
+
         // Join the existing room with our language preference
         webSocket.joinRoom(
             roomId: roomId,
@@ -2822,15 +2864,46 @@ struct LiveTranslationScreen: View {
             return
         }
 
-        audioCapture.startCapturing { audioData, level in
-            // Update audio level for bubble animation
-            DispatchQueue.main.async {
-                self.audioLevel = CGFloat(level)
-                self.isSpeaking = level > 0.1
+        Task { @MainActor in
+            // Ask for mic permission on first activation (no-op once granted)
+            let granted = await AudioSessionManager.shared.requestMicrophonePermission()
+            guard granted else {
+                print("[LiveTranslation] Microphone permission denied - capture not started")
+                return
             }
 
-            // Send audio to WebSocket
-            webSocket.sendAudioChunk(audioData)
+            // Connection may have dropped (or Stop tapped) while the permission prompt was up
+            guard isConnected else {
+                print("[LiveTranslation] Cannot start capture: not connected")
+                return
+            }
+
+            let started = audioCapture.startCapturing { audioData, level in
+                // Update audio level for bubble animation
+                DispatchQueue.main.async {
+                    self.audioLevel = CGFloat(level)
+                    self.isSpeaking = level > 0.1
+                }
+
+                // Echo guard: while our translated speech is playing through the phone's own
+                // speaker, send same-length silence so Deepgram stays fed but doesn't
+                // re-transcribe our output. With headphones, send the mic audio unchanged.
+                let echoRisk = audioPlayback.isOutputActive && AudioSessionManager.isOutputOnBuiltInSpeaker()
+                let outgoing = echoRisk ? Data(count: audioData.count) : audioData
+
+                // Send audio to WebSocket
+                webSocket.sendAudioChunk(outgoing)
+            }
+
+            guard started else {
+                print("[LiveTranslation] Failed to start audio capture - mic stays inactive")
+                return
+            }
+
+            withAnimation {
+                isSessionActive = true
+                hasStartedOnce = true
+            }
         }
     }
 
@@ -2843,8 +2916,11 @@ struct LiveTranslationScreen: View {
     }
 
     private func endSession() {
-        stopAudioCapture()
         webSocket.sendSessionEnd()
+
+        // Server drops our orchestrator on session_end - next mic tap must re-join the room
+        isConnected = false
+        pendingCaptureStart = false
     }
 
     private func disconnect() {

@@ -28,6 +28,13 @@
     <string>This app uses Bluetooth to connect to your headphones for real-time translation.</string>
     <key>NSCameraUsageDescription</key>
     <string>This app needs camera access to scan QR codes for pairing with your translation partner.</string>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>This app connects to the translation server on your local network to translate your conversation in real time.</string>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
     <key>UIApplicationSceneManifest</key>
     <dict>
         <key>UIApplicationSupportsMultipleScenes</key>
