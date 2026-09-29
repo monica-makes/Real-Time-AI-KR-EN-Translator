@@ -1,0 +1,5 @@
+# Licensed / trial fonts for the debug-only Söhne typography (Klim Söhne trial, ABC Favorit trial,
+# PP Neue Montreal). They can't be redistributed, so they stay out of git; the app builds without
+# them and falls back to Classic. Regenerate with ../build_fonts.py from the source font files.
+*
+!.gitignore

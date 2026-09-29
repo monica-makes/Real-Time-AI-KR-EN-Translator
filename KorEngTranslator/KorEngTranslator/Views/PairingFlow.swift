@@ -825,6 +825,8 @@ struct PairingScreen: View {
                 }
             }
 
+            TypographyDebugPicker()
+
             if debugMode {
                 // Headphones Section
                 VStack(alignment: .leading, spacing: 8) {
@@ -3983,6 +3985,8 @@ struct PairingScreenKorean: View {
                     onManualPairing?("")
                 }
             }
+
+            TypographyDebugPicker(onDarkBackground: true)
 
             if debugMode {
                 Toggle("Headphones", isOn: $debugHeadphonesConnected)

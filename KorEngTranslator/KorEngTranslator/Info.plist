@@ -19,6 +19,25 @@
         <string>PPEditorialNew-Italic.otf</string>
         <string>PPEditorialNew-BoldItalic.otf</string>
         <string>NotoSerifKR-Variable.ttf</string>
+        <string>Local/TestSohne-Buch.ttf</string>
+        <string>Local/TestSohne-Kraftig.ttf</string>
+        <string>Local/TestSohne-Halbfett.ttf</string>
+        <string>Local/TestSohneHeading-Buch.ttf</string>
+        <string>Local/TestSohneHeading-Kraftig.ttf</string>
+        <string>PretendardHeading-Medium.otf</string>
+        <string>PretendardHeading-SemiBold.otf</string>
+        <string>PretendardText-Regular.otf</string>
+        <string>PretendardText-Medium.otf</string>
+        <string>PretendardText-SemiBold.otf</string>
+        <string>Local/FavoritPunct-Regular.ttf</string>
+        <string>Local/FavoritPunct-Medium.ttf</string>
+        <string>Local/FavoritPunct-Bold.ttf</string>
+        <string>Local/TestSohne-Leicht.ttf</string>
+        <string>Local/FavoritPunct-Light.ttf</string>
+        <string>Local/NeueMontrealPunct-Light.ttf</string>
+        <string>Local/NeueMontrealPunct-Regular.ttf</string>
+        <string>Local/NeueMontrealPunct-Medium.ttf</string>
+        <string>Local/NeueMontrealPunct-Semibold.ttf</string>
     </array>
     <key>NSMicrophoneUsageDescription</key>
     <string>This app needs access to your microphone to capture speech for real-time translation between Korean and English.</string>
