@@ -71,6 +71,10 @@ struct AppTypography {
     static var cardName: Font { isSohne ? Sohne.b1 : .system(size: 20, weight: .medium) }
     static var cardCaption: Font { isSohne ? Sohne.b3 : .system(size: 15, weight: .regular) }
 
+    // Mic menu cards (voice, honorifics): Figma's 16pt label, line height 20
+    static var optionLabel: Font { isSohne ? Sohne.optionLabel : Classic.optionLabel }
+    static var optionLabelKorean: Font { isSohne ? Sohne.optionLabelKorean : Classic.optionLabelKorean }
+
     /// PP Editorial New headings, Geist body, Noto Serif KR Korean headings, Pretendard Korean body
     private enum Classic {
         static let h1 = Font.custom("PPEditorialNew-Bold", size: 34)
@@ -89,6 +93,8 @@ struct AppTypography {
         static let codeEntry = Font.custom("Geist-SemiBold", size: 26)
         static let emojiSize = Font.custom("Geist-Medium", size: 48)
         static let subtext = Font.custom("Geist-Regular", size: 13)
+        static let optionLabel = Font.custom("Geist-Regular", size: 16)
+        static let optionLabelKorean = Font.custom("Pretendard-Regular", size: 16)
     }
 
     /// English is Söhne with PP Neue Montreal punctuation; Korean is Pretendard with Favorit punctuation.
@@ -122,6 +128,8 @@ struct AppTypography {
         static let codeEntry = english(.semibold, size: 26)
         static let emojiSize = english(.medium, size: 48)
         static let subtext = english(.light, size: 13)
+        static let optionLabel = english(.regular, size: 16)
+        static let optionLabelKorean = korean(.regular, size: 16)
 
         enum Weight {
             case light, regular, medium, semibold
@@ -547,49 +555,92 @@ struct GlassCircleButton: View {
 
 struct MicButton: View {
     @Binding var isSessionActive: Bool
+    /// Started, but the mic is paused: Play shows, and More and Stop stay out
+    var isPaused: Bool = false
+    /// The voice & honorifics menu is open: More turns into an X
+    var isMenuOpen: Bool = false
+    /// Points the control is raised to uncover the menu cards; it moves with a liquid bend
+    var lift: CGFloat = 0
     var onMicTapped: () -> Void
     var onMoreTapped: (() -> Void)?
     var onStopTapped: (() -> Void)?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    // How far each secondary button is out of the mic: 0 = tucked under it, 1 = at its spot.
-    // Separate so one can trail the other; the pill stretches with More.
-    @State private var moreProgress: CGFloat = 0
-    @State private var stopProgress: CGFloat = 0
+    // More and Stop move on their own clock, frame by frame, so each one's strand can stretch, neck
+    // and snap on time behind it. The pill stretches with More.
+    @State private var gooMotion = GooMotion()
+    @State private var isGooing = false
+    @State private var gooMoveID = 0
+
+    // The lift rides the animation that changed it; a clock keeps the pill's bend going until it settles
+    @State private var liftBend = LiquidLift()
+    @State private var isLifting = false
+    @State private var liftMoveID = 0
 
     // Secondary button offset from center (72/2 + 24 + 52/2 = 36 + 24 + 26 = 86)
     private let secondaryButtonOffset: CGFloat = 86
 
-    // Out: 550ms, cubic-bezier(0.34, 1.56, 0.64, 1) - liquid-gooey's bouncy reveal, overshooting the spot
-    private static let revealAnimation = Animation.timingCurve(0.34, 1.56, 0.64, 1, duration: 0.55)
-    // In: 420ms, cubic-bezier(0.5, 0, 0.3, 1) - no overshoot, so the buttons are sucked back into the mic
-    private static let retractAnimation = Animation.timingCurve(0.5, 0, 0.3, 1, duration: 0.42)
-    // The second button trails the first by 40ms: Stop comes out last and goes back in first
-    private static let stagger: Double = 0.04
+    private enum PrimaryIcon { case mic, pause, play }
+
+    private var primaryIcon: PrimaryIcon {
+        if isSessionActive { return .pause }
+        return isPaused ? .play : .mic
+    }
+
+    /// More and Stop are out while the mic listens and while it's paused
+    private var showsSecondaryButtons: Bool { isSessionActive || isPaused }
 
     var body: some View {
+        TimelineView(.animation(paused: !isLifting && !isGooing)) { timeline in
+            LiftedMicControl(lift: lift, tick: timeline.date, bend: liftBend, bends: !reduceMotion) { bend in
+                control(bend: bend, goo: gooMotion.frames(at: .now))
+            }
+        }
+        .frame(width: 252, height: 80)  // Fixed frame to prevent layout jumps
+        .onAppear {
+            // Screen rebuilt mid-session: start with the buttons already out
+            if showsSecondaryButtons {
+                gooMotion.move(out: true, animated: false)
+            }
+        }
+        .onChange(of: showsSecondaryButtons) { _, out in
+            moveSecondaryButtons(out: out)
+        }
+        .onChange(of: lift) {
+            keepBendClockRunning()
+        }
+    }
+
+    private func control(bend: CGFloat, goo: (more: GooFrame, stop: GooFrame)) -> some View {
         ZStack {
-            // Container - gradient pill background, 80 when idle, 252 when active
-            MicButtonPill(progress: moreProgress)
+            // Container - glass pill, 80 when idle, 252 when active
+            MicButtonPill(progress: goo.more.progress, bend: bend)
+                // Driven frame by frame; an animation around isSessionActive mustn't smear it
+                .transaction { $0.animation = nil }
 
             // Secondary buttons (More left, Stop right) - squeezed out of the mic like goo
             GooeySecondaryButton(
-                progress: moreProgress,
+                goo: goo.more,
                 offset: -secondaryButtonOffset,
                 iconName: "more",
                 iconSize: CGSize(width: 40, height: 40),
+                // More turns into an X while the menu is open; Phosphor's X at 30pt draws Figma's 18pt cross
+                alternateIcon: (name: "x", size: CGSize(width: 30, height: 30)),
+                showsAlternate: isMenuOpen,
+                accessibilityLabel: isMenuOpen ? "Close voice and honorific settings" : "Voice and honorific settings",
                 action: { onMoreTapped?() }
             )
             GooeySecondaryButton(
-                progress: stopProgress,
+                goo: goo.stop,
                 offset: secondaryButtonOffset,
                 iconName: "stop",
                 iconSize: CGSize(width: 36, height: 36),
+                accessibilityLabel: "End session",
                 action: { onStopTapped?() }
             )
 
-            // Primary button (Mic/Pause)
+            // Primary button (Mic/Pause/Play)
             Button(action: onMicTapped) {
                 ZStack {
                     // Circle background (72x72)
@@ -623,66 +674,142 @@ struct MicButton: View {
                             y: 1
                         )
 
-                    // Icon (44x44) - Mic when idle, Pause when active
-                    if isSessionActive {
-                        Image("pause")
-                            .renderingMode(.template)
-                            .resizable()
-                            .frame(width: 44, height: 44)
-                            .foregroundColor(AppColors.whiteIcon)
-                    } else {
-                        Image(systemName: "mic.fill")
-                            .font(.system(size: 24))
-                            .foregroundColor(AppColors.whiteIcon)
-                            .frame(width: 44, height: 44)
+                    // Icon (44x44) - Mic before the first start and after Stop, Pause while listening,
+                    // Play while paused; each change is an icon swap
+                    ForEach([PrimaryIcon.mic, .pause, .play], id: \.self) { icon in
+                        primaryIconImage(icon)
+                            .iconSwapShown(icon == primaryIcon)
                     }
                 }
+                .animation(reduceMotion ? nil : IconSwap.animation, value: primaryIcon)
             }
-            .buttonStyle(TapLightenButtonStyle())
+            .buttonStyle(MicPressStyle())
+            .accessibilityLabel(primaryIcon == .pause ? "Pause" : primaryIcon == .play ? "Resume" : "Start")
         }
-        .frame(width: 252, height: 80)  // Fixed frame to prevent layout jumps
-        .onAppear {
-            // Screen rebuilt mid-session: start with the buttons already out
-            if isSessionActive {
-                moreProgress = 1
-                stopProgress = 1
-            }
-        }
-        .onChange(of: isSessionActive) { _, isActive in
-            moveSecondaryButtons(out: isActive)
+    }
+
+    @ViewBuilder
+    private func primaryIconImage(_ icon: PrimaryIcon) -> some View {
+        switch icon {
+        case .mic:
+            Image(systemName: "mic.fill")
+                .font(.system(size: 24))
+                .foregroundColor(AppColors.whiteIcon)
+                .frame(width: 44, height: 44)
+        case .pause, .play:
+            Image(icon == .pause ? "pause" : "play")
+                .renderingMode(.template)
+                .resizable()
+                .frame(width: 44, height: 44)
+                .foregroundColor(AppColors.whiteIcon)
         }
     }
 
     private func moveSecondaryButtons(out: Bool) {
-        let target: CGFloat = out ? 1 : 0
+        // Reduce Motion snaps them, with no strand
+        gooMotion.move(out: out, animated: !reduceMotion)
 
-        if reduceMotion {
-            // Snap, without inheriting the animation that flipped isSessionActive
-            withAnimation(nil) {
-                moreProgress = target
-                stopProgress = target
-            }
-            return
+        // Run the clock until both buttons, and both strands, have settled
+        gooMoveID += 1
+        let moveID = gooMoveID
+        isGooing = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + GooMotion.settleTime) {
+            if gooMoveID == moveID { isGooing = false }
+        }
+    }
+
+    /// Runs the clock past the lift's own animation, until the spring's wobble and the bend have settled
+    private func keepBendClockRunning() {
+        liftMoveID += 1
+        let moveID = liftMoveID
+        isLifting = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + LiquidLift.settleTime) {
+            if liftMoveID == moveID { isLifting = false }
+        }
+    }
+}
+
+/// The mic control raised by `lift`, which is animatable so the lift rides the same animation as the
+/// menu cards, with its pill bent by `bend` (see LiquidLift). `tick` only forces a redraw while the bend
+/// settles after the lift's animation has ended.
+private struct LiftedMicControl<Content: View>: View, Animatable {
+    var lift: CGFloat
+    let tick: Date
+    let bend: LiquidLift
+    let bends: Bool
+    @ViewBuilder let content: (CGFloat) -> Content
+
+    var animatableData: CGFloat {
+        get { lift }
+        set { lift = newValue }
+    }
+
+    var body: some View {
+        content(bend.follow(lift: lift, at: .now, height: 80, enabled: bends))
+            .offset(y: -lift)
+    }
+}
+
+// MARK: - Liquid Lift
+
+/// The pill's bow while the mic control lifts to uncover the menu cards: liquid-gooey's Bend at half
+/// its default strength (`vertical: 0.3` instead of 0.6). As in the library, the pill's outline rides a
+/// stiff spring behind the control (Bend's springiness 1: k = 380·√10 ≈ 1202, c = 18·10^¼ ≈ 32, so it
+/// wobbles a little as it lands), and its top and bottom edges bow by that spring's velocity × 0.05,
+/// capped at half the pill's height and eased in at 9/s. Rising, the middle of the pill leads and its
+/// ends lag; the buttons stay straight.
+private final class LiquidLift {
+    /// Covers the lift's 400ms animation plus the spring's wobble and the bend dying out
+    static let settleTime: TimeInterval = 1.0
+
+    private static let stiffness = 380 * pow(10, 0.5)
+    private static let damping = 18 * pow(10, 0.25)
+    private static let bendPerVelocity = 0.05
+    private static let bendStrength = 0.3
+    private static let bendEaseRate = 9.0
+
+    // The outline's spring in the control's y (down = positive), and its current bow
+    private var y: Double?
+    private var velocity: Double = 0
+    private var bend: Double = 0
+    private var lastDate: Date?
+
+    /// Steps the outline toward the control's current `lift` (points up) and returns how far the pill's
+    /// long edges bow (points, negative = up)
+    func follow(lift: CGFloat, at date: Date, height: CGFloat, enabled: Bool) -> CGFloat {
+        let target = -Double(lift)
+        let dt = min(max(date.timeIntervalSince(lastDate ?? date), 0), 0.1)
+        lastDate = date
+        guard enabled, var y else {
+            y = target
+            velocity = 0
+            bend = 0
+            return 0
         }
 
-        // More leads on the way out and Stop on the way back in, so the pill
-        // (which follows More) always covers both buttons
-        let animation = out ? Self.revealAnimation : Self.retractAnimation
-        withAnimation(animation) {
-            if out { moreProgress = target } else { stopProgress = target }
+        // Substepped at 1/60s or less like the library, so a long frame can't blow the spring up
+        let steps = max(1, Int((dt * 60).rounded(.up)))
+        let h = dt / Double(steps)
+        for _ in 0..<steps {
+            velocity += (Self.stiffness * (target - y) - Self.damping * velocity) * h
+            y += velocity * h
         }
-        withAnimation(animation.delay(Self.stagger)) {
-            if out { stopProgress = target } else { moreProgress = target }
-        }
+        self.y = y
+        let cap = Double(height) / 2
+        let bow = min(max(velocity * Self.bendPerVelocity, -cap), cap) * Self.bendStrength
+        bend += (bow - bend) * min(1, dt * Self.bendEaseRate)
+        return CGFloat(bend)
     }
 }
 
 // MARK: - Mic Button Pill
 
-/// The mic button's translucent pill: an 80pt circle behind the mic at rest, 252pt wide with the
-/// buttons out. `progress` is animatable and follows the More button, overshoot included.
+/// The mic button's glass pill: an 80pt circle behind the mic at rest, 252pt wide with the buttons
+/// out. `progress` is animatable and follows the More button, overshoot included; `bend` bows its
+/// long edges while the control lifts.
 private struct MicButtonPill: View, Animatable {
     var progress: CGFloat
+    var bend: CGFloat = 0
 
     var animatableData: CGFloat {
         get { progress }
@@ -690,55 +817,350 @@ private struct MicButtonPill: View, Animatable {
     }
 
     var body: some View {
-        Capsule()
-            .fill(
-                LinearGradient(
-                    stops: [
-                        .init(color: Color(hex: "FEFEFE").opacity(0.25), location: 0.0),
-                        .init(color: Color(hex: "FEFEFE").opacity(0.20), location: 0.75),
-                        .init(color: Color(hex: "FEFEFE").opacity(0.15), location: 1.0)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            )
+        Color.clear
             // Never narrower than its resting circle
             .frame(width: 80 + 172 * max(progress, 0), height: 80)
-            .overlay(
-                Capsule()
-                    .stroke(Color(hex: "1A1814").opacity(0.40), lineWidth: 0.21)
-            )
-            .shadow(
-                color: Color(hex: "0C0C0D").opacity(0.021),
-                radius: 10,
-                x: 0,
-                y: 0
-            )
+            .glassEffect(.regular, in: BentCapsule(bend: bend))
     }
+}
+
+// MARK: - Bent Capsule
+
+/// A capsule whose top and bottom edges bow by `bend` points at the middle (negative = up), drawn the
+/// way liquid-gooey's Bend draws a moving pill: each long edge is a quadratic whose control point sits
+/// 2 × bend off the edge, between quarter-circle caps.
+struct BentCapsule: Shape {
+    var bend: CGFloat
+
+    var animatableData: CGFloat {
+        get { bend }
+        set { bend = newValue }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        let r = min(rect.width, rect.height) / 2
+        // A circle has no long edges to bow
+        guard abs(bend) > 0.05, rect.width - 2 * r > 1 else { return Capsule().path(in: rect) }
+
+        let k = 0.5523 * r  // quarter circle as a cubic
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX + r, y: rect.minY))
+        path.addQuadCurve(to: CGPoint(x: rect.maxX - r, y: rect.minY),
+                          control: CGPoint(x: rect.midX, y: rect.minY + 2 * bend))
+        path.addCurve(to: CGPoint(x: rect.maxX, y: rect.minY + r),
+                      control1: CGPoint(x: rect.maxX - r + k, y: rect.minY),
+                      control2: CGPoint(x: rect.maxX, y: rect.minY + r - k))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - r))
+        path.addCurve(to: CGPoint(x: rect.maxX - r, y: rect.maxY),
+                      control1: CGPoint(x: rect.maxX, y: rect.maxY - r + k),
+                      control2: CGPoint(x: rect.maxX - r + k, y: rect.maxY))
+        path.addQuadCurve(to: CGPoint(x: rect.minX + r, y: rect.maxY),
+                          control: CGPoint(x: rect.midX, y: rect.maxY + 2 * bend))
+        path.addCurve(to: CGPoint(x: rect.minX, y: rect.maxY - r),
+                      control1: CGPoint(x: rect.minX + r - k, y: rect.maxY),
+                      control2: CGPoint(x: rect.minX, y: rect.maxY - r + k))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + r))
+        path.addCurve(to: CGPoint(x: rect.minX + r, y: rect.minY),
+                      control1: CGPoint(x: rect.minX, y: rect.minY + r - k),
+                      control2: CGPoint(x: rect.minX + r - k, y: rect.minY))
+        path.closeSubpath()
+        return path
+    }
+}
+
+// MARK: - Icon Swap
+
+/// Transitions.dev "Icon swap": the new icon fades in while the old one fades out, each blurring by
+/// 2pt and scaling to/from 25% over 250ms ease-in-out. Stack every state's icon, mark each with
+/// `.iconSwapShown(isCurrent)`, and animate the stack with `.animation(IconSwap.animation, value:)`.
+/// The icons stay mounted, so a fading icon keeps moving with its button.
+enum IconSwap {
+    static let animation = Animation.timingCurve(0.42, 0, 0.58, 1, duration: 0.25)  // CSS ease-in-out
+}
+
+extension View {
+    func iconSwapShown(_ isShown: Bool) -> some View {
+        opacity(isShown ? 1 : 0)
+            .blur(radius: isShown ? 0 : 2)
+            .scaleEffect(isShown ? 1 : 0.25)
+            .accessibilityHidden(!isShown)
+    }
+}
+
+// MARK: - Goo Motion
+
+/// One frame of a secondary button: how far out of the mic it is (0 = tucked under it, 1 = at its
+/// spot, past 1 while it overshoots) and where its strand is in its life
+struct GooFrame {
+    var progress: CGFloat
+    var strand: GooStrand
+}
+
+/// Moves More and Stop in and out of the mic frame by frame, on liquid-gooey's timing, so each
+/// button's strand runs on the same clock as the button:
+/// out 550ms cubic-bezier(0.34, 1.56, 0.64, 1), overshooting the spot, Stop 40ms behind More;
+/// in 420ms cubic-bezier(0.5, 0, 0.3, 1), no overshoot, More 40ms behind Stop - so the pill,
+/// which follows More, always covers both buttons.
+final class GooMotion {
+    static let revealDuration: TimeInterval = 0.55
+    static let retractDuration: TimeInterval = 0.42
+    static let stagger: TimeInterval = 0.04
+    /// Long enough for the later button, and its strand, to finish, with room for the clock to start
+    static let settleTime: TimeInterval = revealDuration + stagger + 0.25
+
+    private static let revealCurve = UnitCurve.bezier(
+        startControlPoint: UnitPoint(x: 0.34, y: 1.56),
+        endControlPoint: UnitPoint(x: 0.64, y: 1)
+    )
+    private static let retractCurve = UnitCurve.bezier(
+        startControlPoint: UnitPoint(x: 0.5, y: 0),
+        endControlPoint: UnitPoint(x: 0.3, y: 1)
+    )
+
+    /// One button's move
+    private struct Leg {
+        var from: CGFloat = 0
+        var to: CGFloat = 0
+        var start = Date.distantPast
+        var out = true
+        var animated = false
+        /// How far into its life a retract strand starts: past reaching for the button when the
+        /// reveal's strand hadn't snapped yet
+        var strandHead: TimeInterval = 0
+
+        func frame(at date: Date) -> GooFrame {
+            guard animated else { return GooFrame(progress: to, strand: .none) }
+            let t = max(date.timeIntervalSince(start), 0)
+            let duration = out ? GooMotion.revealDuration : GooMotion.retractDuration
+            let curve = out ? GooMotion.revealCurve : GooMotion.retractCurve
+            let progress = from + (to - from) * CGFloat(curve.value(at: min(t / duration, 1)))
+            let strand: GooStrand
+            if out {
+                strand = t < GooStrand.revealLife ? .reveal(t) : .none
+            } else {
+                strand = t < duration ? .retract(t + strandHead) : .none
+            }
+            return GooFrame(progress: progress, strand: strand)
+        }
+    }
+
+    /// Each button's current move, and the one before it, which carries on through the stagger
+    private var more = (previous: Leg(), current: Leg())
+    private var stop = (previous: Leg(), current: Leg())
+
+    /// An animated move waiting for the next frame drawn, so its clock starts on screen and none of
+    /// the squeeze out of the mic is skipped
+    private var pendingMove: Bool?
+
+    func move(out: Bool, animated: Bool) {
+        pendingMove = nil
+        if animated {
+            pendingMove = out
+        } else {
+            start(out: out, at: .now, animated: false)
+        }
+    }
+
+    func frames(at date: Date) -> (more: GooFrame, stop: GooFrame) {
+        if let out = pendingMove {
+            pendingMove = nil
+            start(out: out, at: date, animated: true)
+        }
+        return (Self.frame(of: more, at: date), Self.frame(of: stop, at: date))
+    }
+
+    private func start(out: Bool, at date: Date, animated: Bool) {
+        // More leads out, Stop leads in
+        more = Self.legs(after: more, out: out, start: date + (out ? 0 : Self.stagger), now: date, animated: animated)
+        stop = Self.legs(after: stop, out: out, start: date + (out ? Self.stagger : 0), now: date, animated: animated)
+    }
+
+    private static func frame(of legs: (previous: Leg, current: Leg), at date: Date) -> GooFrame {
+        (date < legs.current.start ? legs.previous : legs.current).frame(at: date)
+    }
+
+    private static func legs(
+        after legs: (previous: Leg, current: Leg), out: Bool, start: Date, now: Date, animated: Bool
+    ) -> (previous: Leg, current: Leg) {
+        let previous = now < legs.current.start ? legs.previous : legs.current
+        let handover = previous.frame(at: start)
+        var leg = Leg(from: handover.progress, to: out ? 1 : 0, start: start, out: out, animated: animated)
+        // Already there: nothing to move, and no strand
+        if abs(leg.to - leg.from) < 0.001 { leg.animated = false }
+        // Pulled back in before the strand snapped: it's still attached, so it doesn't reach out again
+        if !out, case .reveal(let t) = handover.strand, t < GooStrand.snap {
+            leg.strandHead = GooStrand.reach + GooStrand.fill
+        }
+        return (previous, leg)
+    }
+}
+
+// MARK: - Goo Strand
+
+/// The white strand between the mic and a secondary button, by the seconds since the button started
+/// moving (liquid-gooey's Move "liquid rubber": the strand lags the button, thins and snaps behind it).
+///
+/// Coming out, the button leaves on its own curve and the strand stretches behind it: a thick band
+/// while the button clears the mic, thinning from 100ms to a thread, which snaps at 310ms - the
+/// top of the button's overshoot, where it's stretched furthest - and whose ends recoil into the
+/// mic and the button as droplets over 90ms, as the button bounces back. Going in, a strand reaches
+/// out from the mic and from the button, joins in 70ms, fills out over 80ms and draws the button in.
+enum GooStrand: Equatable {
+    case none
+    case reveal(TimeInterval)
+    case retract(TimeInterval)
+
+    static let thinStart: TimeInterval = 0.10
+    static let snap: TimeInterval = 0.31
+    static let recoil: TimeInterval = 0.12
+    static let revealLife: TimeInterval = snap + recoil
+    static let reach: TimeInterval = 0.09
+    static let fill: TimeInterval = 0.08
+
+    // Points along the button's axis, from the mic's center
+    private static let micEdge: CGFloat = 36
+    private static let buttonRadius: CGFloat = 26
+    /// Where the strand meets the mic or the button (half its width)
+    private static let rootHalfWidth: CGFloat = 13
+    /// The waist as it starts to thin, and the thread it thins to - just thicker than the goo cut
+    private static let startHalfWidth: CGFloat = 9
+    private static let threadHalfWidth: CGFloat = 2.9
+    /// How far the strand flares out into the mic and the button
+    private static let filletLength: CGFloat = 8
+    /// The drop a snapped end balls up into
+    private static let dropletRadius: CGFloat = 6.5
+
+    /// The button's outline is hidden while the strand joins it, since it would cut across it
+    var strokeOpacity: Double {
+        switch self {
+        case .none: return 1
+        case .reveal(let t): return Self.clamp((t - Self.snap) / Self.recoil)
+        case .retract(let t): return Self.clamp(1 - t / Self.reach)
+        }
+    }
+
+    /// The strand's silhouette, before the goo filter, for a button centered `x` points along +x from
+    /// the mic's center (the origin). Its ends run under the mic and the button.
+    func path(buttonX x: CGFloat) -> Path {
+        let inner: CGFloat = 26
+        let outer = x - 10
+        guard outer > inner, self != .none else { return Path() }
+        let g0 = Self.micEdge
+        let g1 = x - Self.buttonRadius
+        // Still overlapping the mic: a thick band joins them
+        if g1 <= g0 + 1 {
+            return Path(CGRect(x: inner, y: -Self.rootHalfWidth, width: outer - inner, height: 2 * Self.rootHalfWidth))
+        }
+        let neck = (g0 + g1) / 2
+
+        switch self {
+        case .none:
+            return Path()
+        case .reveal(let t):
+            if t < Self.snap {
+                let s = Self.easeOut((t - Self.thinStart) / (Self.snap - Self.thinStart))
+                let waist = Self.startHalfWidth + (Self.threadHalfWidth - Self.startHalfWidth) * s
+                return Self.band(from: inner, to: outer, g0: g0, g1: g1, waist: waist)
+            }
+            // Snapped: each end springs back into its body, balling up into a droplet as it goes
+            let x = (t - Self.snap) / Self.recoil
+            guard x < 1 else { return Path() }
+            let r = Self.easeOut(x)
+            let droplet = Self.threadHalfWidth + (Self.dropletRadius - Self.threadHalfWidth) * Self.easeOut(x * 3)
+            return Self.ends(
+                micTip: neck - 2.5 + (g0 - 2 - neck + 2.5) * r, buttonTip: neck + 2.5 + (g1 + 2 - neck - 2.5) * r,
+                inner: inner, outer: outer, g0: g0, g1: g1, droplet: droplet
+            )
+        case .retract(let t):
+            if t < Self.reach {
+                let r = Self.easeOut(t / Self.reach)
+                return Self.ends(
+                    micTip: g0 - 2 + (neck - g0 + 2) * r, buttonTip: g1 + 2 + (neck - g1 - 2) * r,
+                    inner: inner, outer: outer, g0: g0, g1: g1, droplet: Self.dropletRadius
+                )
+            }
+            let s = Self.smoothstep((t - Self.reach) / Self.fill)
+            let waist = Self.threadHalfWidth + (Self.rootHalfWidth - Self.threadHalfWidth) * s
+            return Self.band(from: inner, to: outer, g0: g0, g1: g1, waist: waist)
+        }
+    }
+
+    /// A band from the mic to the button: `waist` half-wide between them, flaring to the root width
+    private static func band(from inner: CGFloat, to outer: CGFloat, g0: CGFloat, g1: CGFloat, waist: CGFloat) -> Path {
+        ribbon(from: inner, to: outer) { halfWidth(at: $0, g0: g0, g1: g1, waist: waist, fillet: filletLength) }
+    }
+
+    /// A snapped strand: a thread from each body ending in a droplet at its tip
+    private static func ends(
+        micTip: CGFloat, buttonTip: CGFloat, inner: CGFloat, outer: CGFloat, g0: CGFloat, g1: CGFloat, droplet: CGFloat
+    ) -> Path {
+        var path = Path()
+        let micLength = micTip - g0
+        if micLength > 0 {
+            let fillet = min(filletLength, micLength)
+            path.addPath(ribbon(from: inner, to: micTip) {
+                halfWidth(at: $0, g0: g0, g1: g0 + 2 * micLength, waist: threadHalfWidth, fillet: fillet)
+            })
+        }
+        let buttonLength = g1 - buttonTip
+        if buttonLength > 0 {
+            let fillet = min(filletLength, buttonLength)
+            path.addPath(ribbon(from: buttonTip, to: outer) {
+                halfWidth(at: $0, g0: g1 - 2 * buttonLength, g1: g1, waist: threadHalfWidth, fillet: fillet)
+            })
+        }
+        for tip in [micTip, buttonTip] {
+            path.addEllipse(in: CGRect(x: tip - droplet, y: -droplet, width: 2 * droplet, height: 2 * droplet))
+        }
+        return path
+    }
+
+    /// Half the strand's width at `u`: the root width at and beyond the bodies' edges (g0, g1),
+    /// easing down over `fillet` points to `waist` between them
+    private static func halfWidth(at u: CGFloat, g0: CGFloat, g1: CGFloat, waist: CGFloat, fillet: CGFloat) -> CGFloat {
+        if u <= g0 || u >= g1 { return rootHalfWidth }
+        var a = g0 + fillet
+        var b = g1 - fillet
+        if b < a { a = (g0 + g1) / 2; b = a }
+        let l: CGFloat = u < a ? (a - u) / (a - g0) : u > b ? (u - b) / (g1 - b) : 0
+        return waist + (rootHalfWidth - waist) * l * l
+    }
+
+    /// A band along x from `u0` to `u1`, symmetric about the axis
+    private static func ribbon(from u0: CGFloat, to u1: CGFloat, halfWidth: (CGFloat) -> CGFloat) -> Path {
+        guard u1 > u0 else { return Path() }
+        let count = max(2, Int((u1 - u0).rounded(.up)) + 1)
+        let us = (0..<count).map { u0 + (u1 - u0) * CGFloat($0) / CGFloat(count - 1) }
+        var path = Path()
+        path.addLines(us.map { CGPoint(x: $0, y: -halfWidth($0)) } + us.reversed().map { CGPoint(x: $0, y: halfWidth($0)) })
+        path.closeSubpath()
+        return path
+    }
+
+    private static func clamp(_ x: Double) -> Double { min(max(x, 0), 1) }
+    private static func easeOut(_ x: Double) -> CGFloat { let c = 1 - clamp(x); return CGFloat(1 - c * c * c) }
+    private static func smoothstep(_ x: Double) -> CGFloat { let c = clamp(x); return CGFloat(c * c * (3 - 2 * c)) }
 }
 
 // MARK: - Gooey Secondary Button
 
-/// A mic-button secondary button that comes out of the mic like goo (liquid-gooey's Morph effect):
-/// the button's disc and a disc hidden under the mic are blurred together and cut back to a hard
-/// edge in the button's white, so a strand stretches from under the mic, necks and snaps as the
-/// button leaves, and forms again as it's pulled back in. The crisp button rides on top.
-/// `progress` is animatable: 0 = hidden under the mic, 1 = at its spot.
-private struct GooeySecondaryButton: View, Animatable {
-    var progress: CGFloat
+/// A mic-button secondary button that comes out of the mic like goo: a disc hidden under the mic,
+/// the button's disc and the strand between them (GooStrand) are blurred together and cut back to a
+/// hard edge in the button's white, so the strand melts into both. The crisp button rides on top.
+/// `goo` comes from GooMotion, frame by frame.
+private struct GooeySecondaryButton: View {
+    let goo: GooFrame
     let offset: CGFloat  // resting x offset from the mic's center, negative = left
     let iconName: String
     let iconSize: CGSize
+    var alternateIcon: (name: String, size: CGSize)? = nil
+    var showsAlternate: Bool = false
+    let accessibilityLabel: String
     let action: () -> Void
 
-    var animatableData: CGFloat {
-        get { progress }
-        set { progress = newValue }
-    }
-
-    // Goo, in points. Discs closer than about gooBlur bridge; the edge sits where the blurred
-    // silhouette is 5/12 opaque, liquid-gooey's default (contrast 18).
-    private static let gooBlur: CGFloat = 10
+    // Goo, in points: the blur melts the pieces together; the edge sits where the blurred silhouette
+    // is 5/12 opaque, liquid-gooey's default (contrast 18)
+    private static let gooBlur: CGFloat = 5
     private static let gooThreshold: Double = 5.0 / 12.0
     // Just inside the mic's 36pt radius, so the strand seems to come from beneath it
     private static let sourceRadius: CGFloat = 34
@@ -746,25 +1168,27 @@ private struct GooeySecondaryButton: View, Animatable {
     private static let blobRadius: CGFloat = 25.5
 
     var body: some View {
-        let x = offset * progress
-        // Space between the two discs (negative while they overlap); the strand snaps near gooBlur
-        let gap = abs(x) - Self.sourceRadius - Self.blobRadius
+        let x = offset * goo.progress
 
         ZStack {
             Canvas { context, size in
-                // Nothing to draw while tucked in or once the strand has snapped - the hidden disc
-                // would otherwise show through the mic while it's pressed and dimmed
-                guard progress > 0.001, gap < 2 * Self.gooBlur else { return }
+                // Only while there's a strand - the hidden disc would otherwise show through the mic
+                // while it's pressed and dimmed
+                guard goo.progress > 0.001, goo.strand != .none else { return }
                 let center = CGPoint(x: size.width / 2, y: size.height / 2)
 
-                // Filters run last-added first: melt the two discs together, cut the result back to a
+                // Filters run last-added first: melt the pieces together, cut the result back to a
                 // hard edge in the button's white, then soften that edge by half a point
                 context.addFilter(.blur(radius: 0.5))
                 context.addFilter(.alphaThreshold(min: Self.gooThreshold, color: AppColors.secondaryButton))
                 context.addFilter(.blur(radius: Self.gooBlur))
                 context.drawLayer { layer in
-                    layer.fill(Self.disc(at: center, radius: Self.sourceRadius), with: .color(.black))
-                    layer.fill(Self.disc(at: CGPoint(x: center.x + x, y: center.y), radius: Self.blobRadius), with: .color(.black))
+                    layer.translateBy(x: center.x, y: center.y)
+                    layer.fill(Self.disc(at: .zero, radius: Self.sourceRadius), with: .color(.black))
+                    layer.fill(Self.disc(at: CGPoint(x: x, y: 0), radius: Self.blobRadius), with: .color(.black))
+                    // The strand is laid out along +x; mirror it for the left button
+                    layer.scaleBy(x: offset < 0 ? -1 : 1, y: 1)
+                    layer.fill(goo.strand.path(buttonX: abs(x)), with: .color(.black))
                 }
             }
             .frame(width: 300, height: 128)  // the 252 x 80 control plus room for the blur
@@ -774,17 +1198,21 @@ private struct GooeySecondaryButton: View, Animatable {
                 SecondaryRoundButton(
                     iconName: iconName,
                     iconSize: iconSize,
-                    // The outline would cut across the strand, so it fades in as the strand snaps
-                    strokeOpacity: Double(min(max((gap - 8) / 8, 0), 1))
+                    alternateIcon: alternateIcon,
+                    showsAlternate: showsAlternate,
+                    strokeOpacity: goo.strand.strokeOpacity
                 )
             }
             .buttonStyle(TapLightenButtonStyle())
+            .accessibilityLabel(accessibilityLabel)
             .offset(x: x)
             // Hidden when tucked in, since the mic dims while pressed
-            .opacity(progress > 0.001 ? 1 : 0)
-            .allowsHitTesting(progress > 0.5)
-            .accessibilityHidden(progress < 0.5)
+            .opacity(goo.progress > 0.001 ? 1 : 0)
+            .allowsHitTesting(goo.progress > 0.5)
+            .accessibilityHidden(goo.progress < 0.5)
         }
+        // Driven frame by frame; an animation around isSessionActive mustn't smear it
+        .transaction { $0.animation = nil }
     }
 
     private static func disc(at center: CGPoint, radius: CGFloat) -> Path {
@@ -797,7 +1225,12 @@ private struct GooeySecondaryButton: View, Animatable {
 struct SecondaryRoundButton: View {
     let iconName: String
     var iconSize: CGSize = CGSize(width: 24, height: 24)
+    /// Swapped in (Transitions.dev icon swap) while `showsAlternate` is on, e.g. More to X
+    var alternateIcon: (name: String, size: CGSize)? = nil
+    var showsAlternate: Bool = false
     var strokeOpacity: Double = 1
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack {
@@ -811,13 +1244,130 @@ struct SecondaryRoundButton: View {
                         .opacity(strokeOpacity)
                 )
 
-            // Icon
-            Image(iconName)
-                .renderingMode(.template)
-                .resizable()
-                .frame(width: iconSize.width, height: iconSize.height)
-                .foregroundColor(AppColors.primaryIcon)
+            // Icon, and the icon it swaps to
+            icon(iconName, size: iconSize)
+                .iconSwapShown(!showsAlternate)
+            if let alternateIcon {
+                icon(alternateIcon.name, size: alternateIcon.size)
+                    .iconSwapShown(showsAlternate)
+            }
         }
+        .animation(reduceMotion ? nil : IconSwap.animation, value: showsAlternate)
+    }
+
+    private func icon(_ name: String, size: CGSize) -> some View {
+        Image(name)
+            .renderingMode(.template)
+            .resizable()
+            .frame(width: size.width, height: size.height)
+            .foregroundColor(AppColors.primaryIcon)
+    }
+}
+
+// MARK: - Mic Menu Cards
+
+/// The voice & honorifics cards the mic control lifts to uncover (Figma "Korean AI Translator",
+/// node 300:13161): two 88pt glass cards 10pt apart, 346pt across, each a 28pt Phosphor icon over a
+/// 16pt label.
+struct MicMenuCards: View {
+    let isMaleVoice: Bool
+    let voiceTitle: String
+    let honorificsTitle: String
+    var isKorean: Bool = false
+    var onVoiceTapped: () -> Void
+    var onHonorificsTapped: () -> Void
+
+    /// The cards come in (and go) over 400ms on the lift's ease-out
+    static let revealAnimation = Animation.timingCurve(0.22, 1, 0.36, 1, duration: 0.4)
+
+    var body: some View {
+        HStack(spacing: 10) {
+            MicMenuCard(iconName: "gender-female", alternateIconName: "gender-male", showsAlternate: isMaleVoice,
+                        title: voiceTitle, isKorean: isKorean, action: onVoiceTapped)
+            MicMenuCard(iconName: "crown-simple", title: honorificsTitle, isKorean: isKorean, action: onHonorificsTapped)
+        }
+        .frame(width: 346)
+    }
+}
+
+private struct MicMenuCard: View {
+    let iconName: String
+    var alternateIconName: String? = nil
+    var showsAlternate: Bool = false
+    let title: String
+    let isKorean: Bool
+    let action: () -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 8) {
+                ZStack {
+                    icon(iconName)
+                        .iconSwapShown(!showsAlternate)
+                    if let alternateIconName {
+                        icon(alternateIconName)
+                            .iconSwapShown(showsAlternate)
+                    }
+                }
+                .animation(reduceMotion ? nil : IconSwap.animation, value: showsAlternate)
+
+                Text(title)
+                    .font(isKorean ? AppTypography.optionLabelKorean : AppTypography.optionLabel)
+                    .foregroundColor(AppColors.secondaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .frame(height: 20)
+            }
+            .padding(.vertical, 16)
+            .frame(maxWidth: .infinity)
+            .contentShape(.rect(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 8))
+    }
+
+    private func icon(_ name: String) -> some View {
+        Image(name)
+            .renderingMode(.template)
+            .resizable()
+            .frame(width: 28, height: 28)
+            .foregroundColor(AppColors.secondaryIcon)
+    }
+}
+
+/// The mic menu cards' reveal: in from an 8pt blur, 104% scale and transparent (and back out)
+private struct MicMenuRevealEffect: ViewModifier {
+    let isShown: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(isShown ? 1 : 0)
+            .blur(radius: isShown ? 0 : 8)
+            .scaleEffect(isShown ? 1 : 1.04)
+    }
+}
+
+extension AnyTransition {
+    static var micMenuReveal: AnyTransition {
+        .modifier(active: MicMenuRevealEffect(isShown: false), identity: MicMenuRevealEffect(isShown: true))
+    }
+}
+
+// MARK: - Mic Press Style
+
+/// The mic's pressed look: lightened like TapLightenButtonStyle, but with a light wash on top instead
+/// of transparency, so More and Stop don't show through the mic while they squeeze out from under it
+private struct MicPressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .overlay(
+                Circle()
+                    .fill(Color.white.opacity(configuration.isPressed ? 0.4 : 0))
+                    .frame(width: 72, height: 72)
+                    .allowsHitTesting(false)
+            )
     }
 }
 
