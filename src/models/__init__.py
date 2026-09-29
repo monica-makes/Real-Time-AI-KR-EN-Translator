@@ -16,6 +16,8 @@ from .schemas import (
     TranslationResult,
     AudioOut,
     ErrorMessage,
+    ERROR_CODE_TRANSLATION_REFUSED,
+    ERROR_CODE_TRANSLATION_FAILED,
     StatusMessage,
     GenderDetected,
 )
@@ -36,6 +38,8 @@ __all__ = [
     "TranslationResult",
     "AudioOut",
     "ErrorMessage",
+    "ERROR_CODE_TRANSLATION_REFUSED",
+    "ERROR_CODE_TRANSLATION_FAILED",
     "StatusMessage",
     "GenderDetected",
 ]

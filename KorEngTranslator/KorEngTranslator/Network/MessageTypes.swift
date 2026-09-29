@@ -263,11 +263,37 @@ struct AudioOutMessage: Codable {
     let format: String?
 }
 
-/// Error message from server
+/// Error message from server (matches backend ErrorMessage)
+///
+/// For a segment the server couldn't translate, `code` says why, `segmentId` matches that
+/// segment's transcript_final and `original` repeats what was said.
 struct ErrorMessage: Codable {
     let type: String
     let message: String
     let code: String?
+    let direction: String?
+    let segmentId: String?
+    let original: String?
+    let recoverable: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case type
+        case message
+        case code
+        case direction
+        case segmentId = "segment_id"
+        case original
+        case recoverable
+    }
+
+    /// Backend ErrorMessage.code values for a segment that couldn't be translated
+    static let translationRefusedCode = "translation_refused"  // Claude declined (policy)
+    static let translationFailedCode = "translation_failed"    // The translation call broke mid-stream
+
+    /// True when this error is about one segment rather than the session or connection
+    var isTranslationFailure: Bool {
+        code == Self.translationRefusedCode || code == Self.translationFailedCode
+    }
 }
 
 /// Status/connection message
@@ -282,6 +308,122 @@ struct GenderDetectedMessage: Codable {
     let type: String
     let gender: String
     let direction: String?
+}
+
+// MARK: - Conversation Events (both sides of the chat)
+
+/// Whose words a conversation line holds
+enum ConversationSide: Equatable {
+    case me
+    case partner
+}
+
+/// A transcript from the server (interim or final). Only finals carry a segment id.
+struct TranscriptEvent: Equatable {
+    let text: String
+    let isFinal: Bool
+    let segmentId: String?
+    /// The speaker's direction (mine for my words, the partner's for theirs)
+    let direction: TranslationDirection
+}
+
+/// A finished translation for one segment
+struct TranslationEvent: Equatable {
+    let original: String
+    let translated: String
+    let segmentId: String?
+    /// The speaker's direction (mine for my words, the partner's for theirs)
+    let direction: TranslationDirection
+    let honorific: Bool?
+}
+
+/// A segment the server could not translate (policy refusal or a failed translation call)
+struct TranslationFailureEvent: Equatable {
+    let message: String
+    let code: String?
+    let segmentId: String?
+    let original: String?
+    let direction: TranslationDirection?
+
+    var isRefusal: Bool { code == ErrorMessage.translationRefusedCode }
+}
+
+/// One spoken segment as the chat shows it: what was said, and its translation once it arrives
+struct ConversationLine: Identifiable, Equatable {
+    /// The server's segment_id (a fresh UUID for a translation that arrived without one)
+    let id: String
+    let side: ConversationSide
+    var original: String
+    var translated: String? = nil
+    /// Set when the server reported it couldn't translate this segment
+    var failure: TranslationFailureEvent? = nil
+
+    /// Still waiting for the translation (or a failure notice)
+    var isPending: Bool { translated == nil && failure == nil }
+}
+
+/// Both sides of the conversation, joined by the server's segment_id.
+///
+/// A final transcript starts a line; the matching translation (or failure) fills it in.
+/// A translation or failure for an unknown segment starts its own line, so nothing is
+/// dropped. Interim transcripts are live captions, not lines, and are ignored here.
+struct ConversationLog: Equatable {
+    private(set) var lines: [ConversationLine] = []
+    /// Oldest lines are dropped beyond this many
+    var maxLines: Int = 200
+
+    var latest: ConversationLine? { lines.last }
+
+    mutating func apply(_ event: TranscriptEvent, side: ConversationSide) {
+        guard event.isFinal, let id = event.segmentId else { return }
+        if let index = index(of: id, side: side) {
+            lines[index].original = event.text
+        } else {
+            append(ConversationLine(id: id, side: side, original: event.text))
+        }
+    }
+
+    mutating func apply(_ event: TranslationEvent, side: ConversationSide) {
+        if let id = event.segmentId, let index = index(of: id, side: side) {
+            if lines[index].original.isEmpty { lines[index].original = event.original }
+            lines[index].translated = event.translated
+            lines[index].failure = nil
+        } else {
+            append(ConversationLine(
+                id: event.segmentId ?? UUID().uuidString,
+                side: side,
+                original: event.original,
+                translated: event.translated
+            ))
+        }
+    }
+
+    mutating func apply(_ event: TranslationFailureEvent, side: ConversationSide) {
+        if let id = event.segmentId, let index = index(of: id, side: side) {
+            if lines[index].original.isEmpty, let original = event.original {
+                lines[index].original = original
+            }
+            lines[index].failure = event
+        } else {
+            append(ConversationLine(
+                id: event.segmentId ?? UUID().uuidString,
+                side: side,
+                original: event.original ?? "",
+                failure: event
+            ))
+        }
+    }
+
+    private func index(of id: String, side: ConversationSide) -> Int? {
+        lines.firstIndex { $0.id == id && $0.side == side }
+    }
+
+    private mutating func append(_ line: ConversationLine) {
+        lines.append(line)
+        if lines.count > maxLines {
+            lines.removeFirst(lines.count - maxLines)
+        }
+    }
 }
 
 // MARK: - Parsed Incoming Message

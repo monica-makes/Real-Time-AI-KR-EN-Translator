@@ -14,6 +14,9 @@ from ...models import (
     AudioOut,
     TranscriptInterim,
     TranscriptFinal,
+    ErrorMessage,
+    ERROR_CODE_TRANSLATION_REFUSED,
+    ERROR_CODE_TRANSLATION_FAILED,
 )
 from ...session.context import SharedTranslationContext
 from ...services import STTService, TTSService, TranslatorService
@@ -43,6 +46,7 @@ class EnToKrPipeline(BasePipeline):
         on_final: Optional[Callable[[TranscriptFinal], None]] = None,
         on_translation: Optional[Callable[[TranslationResult], None]] = None,
         on_audio: Optional[Callable[[AudioOut], None]] = None,
+        on_translation_failed: Optional[Callable[[ErrorMessage], None]] = None,
     ):
         """
         Initialize EN->KO pipeline.
@@ -57,6 +61,7 @@ class EnToKrPipeline(BasePipeline):
             on_final: Callback for final transcripts.
             on_translation: Callback for translations.
             on_audio: Callback for audio output.
+            on_translation_failed: Callback for a segment that couldn't be translated.
         """
         super().__init__(
             direction=TranslationDirection.EN_TO_KO,
@@ -66,6 +71,7 @@ class EnToKrPipeline(BasePipeline):
             tts=tts,
             on_translation=on_translation,
             on_audio=on_audio,
+            on_translation_failed=on_translation_failed,
         )
         self.on_interim = on_interim
         self.on_final = on_final
@@ -197,21 +203,23 @@ class EnToKrPipeline(BasePipeline):
     async def _process_sentence(self, sentence: str) -> None:
         """Process a detected sentence through translation."""
         segment_id = str(uuid.uuid4())[:8]
-
-        # Emit final transcript
-        if self.on_final:
-            msg = TranscriptFinal(
-                direction=TranslationDirection.EN_TO_KO,
-                text=sentence,
-                segment_id=segment_id,
-            )
-            self.on_final(msg)
+        self._emit_final(sentence, segment_id)
 
         # Translate and synthesize
         await self._translate_and_speak(sentence, segment_id)
 
+    def _emit_final(self, text: str, segment_id: str) -> None:
+        """Emit the final transcript of a segment about to be translated."""
+        if self.on_final:
+            self.on_final(TranscriptFinal(
+                direction=TranslationDirection.EN_TO_KO,
+                text=text,
+                segment_id=segment_id,
+            ))
+
     async def _translate_and_speak(self, english_text: str, segment_id: str) -> None:
         """Translate English text and synthesize Korean speech."""
+        translation_sent = False
         try:
             full_translation = ""
 
@@ -227,30 +235,30 @@ class EnToKrPipeline(BasePipeline):
                 if phrase:
                     await self._synthesize_and_emit(phrase, "ko")
 
+            # The stream has ended without a refusal: send the text now, before
+            # the trailing phrase's TTS, so the chat isn't a whole clip behind the audio
+            self._emit_translation(
+                english_text, full_translation, segment_id,
+                honorific=self.formality.honorific_mode,
+            )
+            translation_sent = True
+
             # Flush remaining phrase buffer
             remaining = self.phrase_buffer.force_flush()
             if remaining:
                 await self._synthesize_and_emit(remaining, "ko")
 
-            # Emit translation result
-            if self.on_translation:
-                msg = TranslationResult(
-                    direction=TranslationDirection.EN_TO_KO,
-                    original=english_text,
-                    translated=full_translation,
-                    segment_id=segment_id,
-                    honorific=self.formality.honorific_mode,
-                )
-                self.on_translation(msg)
-
         except TranslationRefused as e:
             # Expected policy decline (already logged by the translator) - drop the partial
             logger.warning(f"EN->KO segment {segment_id} not translated: {e}")
             self.phrase_buffer.clear()
+            self._emit_translation_failed(english_text, segment_id, ERROR_CODE_TRANSLATION_REFUSED)
         except Exception as e:
             logger.error(f"Error in translate_and_speak: {e}")
             # Drop partial tokens so they don't leak into the next utterance's audio
             self.phrase_buffer.clear()
+            if not translation_sent:
+                self._emit_translation_failed(english_text, segment_id, ERROR_CODE_TRANSLATION_FAILED)
 
     async def _flush_remaining(self, utterance_end_ms: Optional[int] = None) -> None:
         """Flush any remaining content in buffers."""
@@ -276,6 +284,7 @@ class EnToKrPipeline(BasePipeline):
         sentence = self.sentence_detector.force_flush()
         if sentence:
             segment_id = str(uuid.uuid4())[:8]
+            self._emit_final(sentence, segment_id)
             await self._translate_and_speak(sentence, segment_id)
 
         # Flush phrase buffer

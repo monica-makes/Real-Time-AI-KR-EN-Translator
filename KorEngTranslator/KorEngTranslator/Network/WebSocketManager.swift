@@ -31,8 +31,9 @@ enum ServerConfig {
     /// - Parameters:
     ///   - direction: Pairing direction (e.g. "ko_to_en")
     ///   - host: Optional host override (defaults to ServerConfig.host)
-    static func pairURL(direction: String, host: String? = nil) -> String {
-        "ws://\(host ?? self.host):\(port)/ws/pair?direction=\(direction)"
+    ///   - manual: Codes only (create_room / join_room), no Wi-Fi matching or timeout
+    static func pairURL(direction: String, host: String? = nil, manual: Bool = false) -> String {
+        "ws://\(host ?? self.host):\(port)/ws/pair?direction=\(direction)&mode=\(manual ? "manual" : "wifi")"
     }
 }
 
@@ -108,10 +109,19 @@ class WebSocketManager: ObservableObject {
     var onPartnerJoined: (() -> Void)?
     var onPartnerLeft: (() -> Void)?
     var onPairingTimeout: (() -> Void)?
-    var onMyTranscription: ((String) -> Void)?
-    var onPartnerTranslation: ((String, String) -> Void)?  // (original, translated)
-    var onError: ((String) -> Void)?  // Server-reported error; connection stays up
+    var onError: ((String) -> Void)?  // Server-reported session/connection error; the socket stays up
     var onDisconnected: ((String) -> Void)?  // Transport failure (socket dropped / unreachable)
+
+    /// Callbacks for the conversation text. The server sends every transcript and translation
+    /// to both phones in a room, tagged with the speaker's direction, so the chat can show both
+    /// sides: my line with its translation, and the partner's line with its translation.
+    /// Nothing is filtered here - the screen decides what to display.
+    var onMyTranscript: ((TranscriptEvent) -> Void)?         // My words, in my language (interim + final)
+    var onPartnerTranscript: ((TranscriptEvent) -> Void)?    // The partner's words, in their language
+    var onMyTranslation: ((TranslationEvent) -> Void)?       // My words translated (what the partner hears)
+    var onPartnerTranslation: ((TranslationEvent) -> Void)?  // The partner's words translated into my language
+    /// A segment (mine or the partner's) the server couldn't translate; both phones get this
+    var onTranslationFailed: ((TranslationFailureEvent, ConversationSide) -> Void)?
 
     // MARK: - Private Properties
 
@@ -120,7 +130,7 @@ class WebSocketManager: ObservableObject {
     private var serverURL: URL?
 
     /// User's language - determines audio routing direction
-    private var userLanguage: UserLanguage = .english
+    private(set) var userLanguage: UserLanguage = .english
 
     // Default backend URL (read at connect time so launch-argument overrides apply)
     private static var defaultURL: String { ServerConfig.translateURL }
@@ -137,9 +147,20 @@ class WebSocketManager: ObservableObject {
         userLanguage.partnerOutputDirection
     }
 
+    /// Which side of the conversation a message with this speaker direction belongs to
+    func side(of direction: TranslationDirection?) -> ConversationSide {
+        guard let direction else { return .me }
+        return direction == myOutputDirection ? .me : .partner
+    }
+
     // MARK: - Initialization
 
     init() {}
+
+    /// Set the language without connecting (command-line harness and previews)
+    func configure(userLanguage: UserLanguage) {
+        self.userLanguage = userLanguage
+    }
 
     // MARK: - Public Connection Methods
 
@@ -537,7 +558,8 @@ class WebSocketManager: ObservableObject {
         }
     }
 
-    private func handleTextMessage(_ text: String) {
+    /// Handle one JSON text frame from the server (internal so the command-line harness can inject frames)
+    func handleTextMessage(_ text: String) {
         guard let data = text.data(using: .utf8),
               let parsed = ParsedMessage.parse(from: data) else {
             print("[WebSocketManager] Failed to parse message: \(text.prefix(100))")
@@ -562,26 +584,43 @@ class WebSocketManager: ObservableObject {
             onPartnerLeft?()
 
         case .transcription(let msg):
-            print("[WebSocketManager] Transcription: \(msg.text)")
+            print("[WebSocketManager] Transcript (\(msg.type)): \(msg.text)")
             lastTranscription = msg.text
 
-            // Check if this is MY speech being transcribed
-            if let directionStr = msg.direction,
-               let direction = TranslationDirection(rawValue: directionStr),
-               direction == myOutputDirection {
-                onMyTranscription?(msg.text)
+            // The direction is the speaker's: mine for my words, the partner's for theirs.
+            // A legacy frame without one is treated as mine.
+            let direction = TranslationDirection(rawValue: msg.direction ?? "") ?? myOutputDirection
+            let event = TranscriptEvent(
+                text: msg.text,
+                isFinal: msg.isFinal,
+                segmentId: msg.segmentId,
+                direction: direction
+            )
+            if side(of: direction) == .me {
+                onMyTranscript?(event)
+            } else {
+                onPartnerTranscript?(event)
             }
 
         case .translation(let msg):
             print("[WebSocketManager] Translation: \(msg.translated)")
             lastTranslation = msg.translated
 
-            // Check if this is PARTNER's speech translated for me.
-            // Solo (no partner connected): show my own translation instead.
-            if let directionStr = msg.direction,
-               let direction = TranslationDirection(rawValue: directionStr),
-               direction == partnerOutputDirection || !isPartnerConnected {
-                onPartnerTranslation?(msg.original ?? "", msg.translated)
+            // Both my own translations and the partner's arrive here (the server sends every
+            // translation to both phones). Deliver each to its own callback; nothing is dropped,
+            // so solo mode needs no special case.
+            let direction = TranslationDirection(rawValue: msg.direction ?? "") ?? myOutputDirection
+            let event = TranslationEvent(
+                original: msg.original ?? "",
+                translated: msg.translated,
+                segmentId: msg.segmentId,
+                direction: direction,
+                honorific: msg.honorific
+            )
+            if side(of: direction) == .me {
+                onMyTranslation?(event)
+            } else {
+                onPartnerTranslation?(event)
             }
 
         case .audio(let msg):
@@ -595,10 +634,24 @@ class WebSocketManager: ObservableObject {
             print("[WebSocketManager] Audio out header: direction=\(msg.direction ?? "unknown"), format=\(msg.format ?? "unknown")")
 
         case .error(let msg):
-            // Server-side error (e.g. "No active session") - the socket is still usable,
-            // so keep connectionState; only transport failures change it
-            print("[WebSocketManager] Server error: \(msg.message)")
-            onError?(msg.message)
+            if msg.isTranslationFailure {
+                // One segment couldn't be translated (mine or the partner's); the session goes on
+                print("[WebSocketManager] Segment not translated (\(msg.code ?? "-")): \(msg.message)")
+                let direction = msg.direction.flatMap(TranslationDirection.init(rawValue:))
+                let event = TranslationFailureEvent(
+                    message: msg.message,
+                    code: msg.code,
+                    segmentId: msg.segmentId,
+                    original: msg.original,
+                    direction: direction
+                )
+                onTranslationFailed?(event, side(of: direction))
+            } else {
+                // Server-side error (e.g. "No active session") - the socket is still usable,
+                // so keep connectionState; only transport failures change it
+                print("[WebSocketManager] Server error: \(msg.message)")
+                onError?(msg.message)
+            }
 
         case .status(let msg):
             print("[WebSocketManager] Status: \(msg.status)")
