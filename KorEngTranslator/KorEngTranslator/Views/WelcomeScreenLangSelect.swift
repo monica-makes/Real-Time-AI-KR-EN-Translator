@@ -138,6 +138,44 @@ struct PairingModeDebugPicker: View {
     }
 }
 
+/// Debug picker for the typography (Classic / Söhne). Switching restarts on the welcome screen so
+/// every screen redraws with the new fonts.
+struct TypographyDebugPicker: View {
+    var onDarkBackground = false
+
+    @AppStorage(TypographyStyle.storageKey) private var style: TypographyStyle = .classic
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("TYPOGRAPHY")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundColor(onDarkBackground ? .white.opacity(0.6) : .secondary)
+
+            HStack(spacing: 8) {
+                ForEach(TypographyStyle.allCases, id: \.self) { option in
+                    Button(action: {
+                        guard option != style else { return }
+                        style = option
+                        NotificationCenter.default.post(name: .debugRestartToHome, object: nil)
+                    }) {
+                        Text(option.label)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(style == option ? .white : (onDarkBackground ? .white : .primary))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .frame(maxWidth: .infinity)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(style == option ? Color.orange : Color.gray.opacity(onDarkBackground ? 0.35 : 0.2))
+                            )
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+            }
+        }
+    }
+}
+
 /// Debug Controls card for the Create/Join screen (styled like the pairing screen's panel)
 struct PairingModeDebugCard: View {
     var onSelect: ((PairingEntryMode) -> Void)?
@@ -152,6 +190,7 @@ struct PairingModeDebugCard: View {
                 Spacer()
             }
             PairingModeDebugPicker(onSelect: onSelect)
+            TypographyDebugPicker()
         }
         .padding(16)
         .glassEffect(.regular, in: .rect(cornerRadius: 12))
@@ -637,14 +676,14 @@ struct LanguageCard: View {
 
                     // Language name
                     Text(language.displayName)
-                        .font(.system(size: 20, weight: .medium))
+                        .font(AppTypography.cardName)
                         .tracking(0.48)
                         .foregroundColor(Color(red: 0.07, green: 0.07, blue: 0.07))
                         .padding(.bottom, 6)
 
                     // Abbreviation
                     Text(language.abbreviation)
-                        .font(.system(size: 15, weight: .regular))
+                        .font(AppTypography.cardCaption)
                         .tracking(0.33)
                         .foregroundColor(Color(red: 0.07, green: 0.07, blue: 0.07).opacity(0.7))
                 }
@@ -1184,7 +1223,7 @@ struct GetStartedCard: View {
 
                     // Subtitle - fixed at bottom
                     Text(subtitle)
-                        .font(.system(size: 15, weight: .regular))
+                        .font(AppTypography.cardCaption)
                         .tracking(0.33)
                         .foregroundColor(Color(red: 0.07, green: 0.07, blue: 0.07).opacity(0.7))
                 }

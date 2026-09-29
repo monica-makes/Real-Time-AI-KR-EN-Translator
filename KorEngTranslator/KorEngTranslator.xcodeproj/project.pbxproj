@@ -21,6 +21,12 @@
 		520982752F1ABAA900391F71 /* Pretendard-Medium.otf in Resources */ = {isa = PBXBuildFile; fileRef = 520982672F1ABAA900391F71 /* Pretendard-Medium.otf */; };
 		520982762F1ABAA900391F71 /* PPEditorialNew-BoldItalic.otf in Resources */ = {isa = PBXBuildFile; fileRef = 520982632F1ABAA900391F71 /* PPEditorialNew-BoldItalic.otf */; };
 		5209827A2F1AC26200391F71 /* NotoSerifKR-Variable.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 520982792F1AC26200391F71 /* NotoSerifKR-Variable.ttf */; };
+		50E0F0622F9A000100C0FFEE /* PretendardHeading-Medium.otf in Resources */ = {isa = PBXBuildFile; fileRef = 50E0F0612F9A000100C0FFEE /* PretendardHeading-Medium.otf */; };
+		50E0F0722F9A000100C0FFEE /* PretendardHeading-SemiBold.otf in Resources */ = {isa = PBXBuildFile; fileRef = 50E0F0712F9A000100C0FFEE /* PretendardHeading-SemiBold.otf */; };
+		50E0F2022F9A000100C0FFEE /* Local in Resources */ = {isa = PBXBuildFile; fileRef = 50E0F2012F9A000100C0FFEE /* Local */; };
+		50E0F0822F9A000100C0FFEE /* PretendardText-Regular.otf in Resources */ = {isa = PBXBuildFile; fileRef = 50E0F0812F9A000100C0FFEE /* PretendardText-Regular.otf */; };
+		50E0F0922F9A000100C0FFEE /* PretendardText-Medium.otf in Resources */ = {isa = PBXBuildFile; fileRef = 50E0F0912F9A000100C0FFEE /* PretendardText-Medium.otf */; };
+		50E0F0A22F9A000100C0FFEE /* PretendardText-SemiBold.otf in Resources */ = {isa = PBXBuildFile; fileRef = 50E0F0A12F9A000100C0FFEE /* PretendardText-SemiBold.otf */; };
 		5209827E2F1ACFC000391F71 /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5209827D2F1ACFC000391F71 /* DesignSystem.swift */; };
 		520982822F1B525600391F71 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 520982812F1B525600391F71 /* Assets.xcassets */; };
 		520982842F1C728C00391F71 /* PairingFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 520982832F1C728C00391F71 /* PairingFlow.swift */; };
@@ -48,6 +54,12 @@
 		520982682F1ABAA900391F71 /* Pretendard-Regular.otf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Pretendard-Regular.otf"; sourceTree = "<group>"; };
 		520982692F1ABAA900391F71 /* Pretendard-SemiBold.otf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Pretendard-SemiBold.otf"; sourceTree = "<group>"; };
 		520982792F1AC26200391F71 /* NotoSerifKR-Variable.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "NotoSerifKR-Variable.ttf"; sourceTree = "<group>"; };
+		50E0F0612F9A000100C0FFEE /* PretendardHeading-Medium.otf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "PretendardHeading-Medium.otf"; sourceTree = "<group>"; };
+		50E0F0712F9A000100C0FFEE /* PretendardHeading-SemiBold.otf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "PretendardHeading-SemiBold.otf"; sourceTree = "<group>"; };
+		50E0F2012F9A000100C0FFEE /* Local */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Local; sourceTree = "<group>"; };
+		50E0F0812F9A000100C0FFEE /* PretendardText-Regular.otf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "PretendardText-Regular.otf"; sourceTree = "<group>"; };
+		50E0F0912F9A000100C0FFEE /* PretendardText-Medium.otf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "PretendardText-Medium.otf"; sourceTree = "<group>"; };
+		50E0F0A12F9A000100C0FFEE /* PretendardText-SemiBold.otf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "PretendardText-SemiBold.otf"; sourceTree = "<group>"; };
 		5209827D2F1ACFC000391F71 /* DesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignSystem.swift; sourceTree = "<group>"; };
 		520982812F1B525600391F71 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		520982832F1C728C00391F71 /* PairingFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingFlow.swift; sourceTree = "<group>"; };
@@ -81,6 +93,12 @@
 			isa = PBXGroup;
 			children = (
 				520982792F1AC26200391F71 /* NotoSerifKR-Variable.ttf */,
+				50E0F0612F9A000100C0FFEE /* PretendardHeading-Medium.otf */,
+				50E0F0712F9A000100C0FFEE /* PretendardHeading-SemiBold.otf */,
+				50E0F2012F9A000100C0FFEE /* Local */,
+				50E0F0812F9A000100C0FFEE /* PretendardText-Regular.otf */,
+				50E0F0912F9A000100C0FFEE /* PretendardText-Medium.otf */,
+				50E0F0A12F9A000100C0FFEE /* PretendardText-SemiBold.otf */,
 				5209825E2F1ABAA900391F71 /* Geist-Bold.ttf */,
 				5209825F2F1ABAA900391F71 /* Geist-Medium.ttf */,
 				520982602F1ABAA900391F71 /* Geist-Regular.ttf */,
@@ -241,6 +259,12 @@
 				520982752F1ABAA900391F71 /* Pretendard-Medium.otf in Resources */,
 				520982762F1ABAA900391F71 /* PPEditorialNew-BoldItalic.otf in Resources */,
 				5209827A2F1AC26200391F71 /* NotoSerifKR-Variable.ttf in Resources */,
+				50E0F0622F9A000100C0FFEE /* PretendardHeading-Medium.otf in Resources */,
+				50E0F0722F9A000100C0FFEE /* PretendardHeading-SemiBold.otf in Resources */,
+				50E0F2022F9A000100C0FFEE /* Local in Resources */,
+				50E0F0822F9A000100C0FFEE /* PretendardText-Regular.otf in Resources */,
+				50E0F0922F9A000100C0FFEE /* PretendardText-Medium.otf in Resources */,
+				50E0F0A22F9A000100C0FFEE /* PretendardText-SemiBold.otf in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

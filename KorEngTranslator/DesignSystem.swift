@@ -6,38 +6,164 @@ import UIKit
 
 // MARK: - Typography from Figma
 
+/// Which typography the app renders with. Classic is the shipping look; Söhne is a debug-only
+/// trial (Debug Controls > TYPOGRAPHY, or launch with `-debugTypographyStyle sohne`) that may
+/// become the default later. Release builds always use Classic.
+enum TypographyStyle: String, CaseIterable {
+    case classic
+    case sohne
+
+    static let storageKey = "debugTypographyStyle"
+
+    static var current: TypographyStyle {
+        #if DEBUG
+        return TypographyStyle(rawValue: UserDefaults.standard.string(forKey: storageKey) ?? "") ?? .classic
+        #else
+        return .classic
+        #endif
+    }
+
+    var label: String {
+        switch self {
+        case .classic: return "Classic"
+        case .sohne: return "Söhne"
+        }
+    }
+}
+
 struct AppTypography {
-    // Headings - PP Editorial New
-    static let h1 = Font.custom("PPEditorialNew-Bold", size: 34)  // line height 44, tracking 2.6%
-    static let h2 = Font.custom("PPEditorialNew-Regular", size: 28)  // line height 39, tracking 2.4%
-    static let h3 = Font.custom("PPEditorialNew-Regular", size: 20)  // line height 28, tracking 2.4%
+    private static var isSohne: Bool { TypographyStyle.current == .sohne }
 
-    // Body - Geist
-    static let b1 = Font.custom("Geist-Medium", size: 20)  // line height 24, tracking 2.4%
-    static let b2 = Font.custom("Geist-Medium", size: 17)  // line height 22, tracking 2.2%
-    static let b3 = Font.custom("Geist-Regular", size: 15)  // line height 21, tracking 2.2%
+    // Headings
+    static var h1: Font { isSohne ? Sohne.h1 : Classic.h1 }  // line height 44, tracking 2.6%
+    static var h2: Font { isSohne ? Sohne.h2 : Classic.h2 }  // line height 39, tracking 2.4%
+    static var h3: Font { isSohne ? Sohne.h3 : Classic.h3 }  // line height 28, tracking 2.4%
 
-    // Korean Headings - Noto Serif KR
-    static let h1Korean = Font.custom("NotoSerifKR-SemiBold", size: 32)  // line height 52, tracking 2.4%
-    static let h2Korean = Font.custom("NotoSerifKR-SemiBold", size: 28)  // line height 38, tracking 2.4%
-    static let h3Korean = Font.custom("NotoSerifKR-Medium", size: 20)    // line height 31, tracking 2.2%
+    // Body
+    static var b1: Font { isSohne ? Sohne.b1 : Classic.b1 }  // line height 24, tracking 2.4%
+    static var b2: Font { isSohne ? Sohne.b2 : Classic.b2 }  // line height 22, tracking 2.2%
+    static var b3: Font { isSohne ? Sohne.b3 : Classic.b3 }  // line height 21, tracking 2.2%
 
-    // Korean Body - Pretendard
-    static let b1Korean = Font.custom("Pretendard-Medium", size: 20)    // line height 24, tracking 2.4%
-    static let b2Korean = Font.custom("Pretendard-Medium", size: 17)    // line height 22, tracking 2.2%
-    static let b3Korean = Font.custom("Pretendard-Regular", size: 14)   // line height 21, tracking 2.2%
+    // Korean Headings
+    static var h1Korean: Font { isSohne ? Sohne.h1Korean : Classic.h1Korean }  // line height 52, tracking 2.4%
+    static var h2Korean: Font { isSohne ? Sohne.h2Korean : Classic.h2Korean }  // line height 38, tracking 2.4%
+    static var h3Korean: Font { isSohne ? Sohne.h3Korean : Classic.h3Korean }  // line height 31, tracking 2.2%
 
-    // Korean Subtext - Pretendard
-    static let subtextKorean = Font.custom("Pretendard-Regular", size: 13)  // line height 19, tracking 2%
+    // Korean Body
+    static var b1Korean: Font { isSohne ? Sohne.b1Korean : Classic.b1Korean }  // line height 24, tracking 2.4%
+    static var b2Korean: Font { isSohne ? Sohne.b2Korean : Classic.b2Korean }  // line height 22, tracking 2.2%
+    static var b3Korean: Font { isSohne ? Sohne.b3Korean : Classic.b3Korean }  // line height 21, tracking 2.2%
 
-    // Code Entry - Geist
-    static let codeEntry = Font.custom("Geist-SemiBold", size: 26)  // line height 28, tracking 2.4%
+    // Korean Subtext
+    static var subtextKorean: Font { isSohne ? Sohne.subtextKorean : Classic.subtextKorean }  // line height 19, tracking 2%
+
+    // Code Entry
+    static var codeEntry: Font { isSohne ? Sohne.codeEntry : Classic.codeEntry }  // line height 28, tracking 2.4%
 
     // Emoji
-    static let emojiSize = Font.custom("Geist-Medium", size: 48)  // line height 32, tracking 2.2%
+    static var emojiSize: Font { isSohne ? Sohne.emojiSize : Classic.emojiSize }  // line height 32, tracking 2.2%
 
-    // Subtext - Geist
-    static let subtext = Font.custom("Geist-Regular", size: 13)  // line height 19, tracking 2%
+    // Subtext
+    static var subtext: Font { isSohne ? Sohne.subtext : Classic.subtext }  // line height 19, tracking 2%
+
+    // Language card name/abbreviation and Get Started card subtitle: SF in Classic (as originally
+    // built), the matching Söhne body styles in Söhne
+    static var cardName: Font { isSohne ? Sohne.b1 : .system(size: 20, weight: .medium) }
+    static var cardCaption: Font { isSohne ? Sohne.b3 : .system(size: 15, weight: .regular) }
+
+    /// PP Editorial New headings, Geist body, Noto Serif KR Korean headings, Pretendard Korean body
+    private enum Classic {
+        static let h1 = Font.custom("PPEditorialNew-Bold", size: 34)
+        static let h2 = Font.custom("PPEditorialNew-Regular", size: 28)
+        static let h3 = Font.custom("PPEditorialNew-Regular", size: 20)
+        static let b1 = Font.custom("Geist-Medium", size: 20)
+        static let b2 = Font.custom("Geist-Medium", size: 17)
+        static let b3 = Font.custom("Geist-Regular", size: 15)
+        static let h1Korean = Font.custom("NotoSerifKR-SemiBold", size: 32)
+        static let h2Korean = Font.custom("NotoSerifKR-SemiBold", size: 28)
+        static let h3Korean = Font.custom("NotoSerifKR-Medium", size: 20)
+        static let b1Korean = Font.custom("Pretendard-Medium", size: 20)
+        static let b2Korean = Font.custom("Pretendard-Medium", size: 17)
+        static let b3Korean = Font.custom("Pretendard-Regular", size: 14)
+        static let subtextKorean = Font.custom("Pretendard-Regular", size: 13)
+        static let codeEntry = Font.custom("Geist-SemiBold", size: 26)
+        static let emojiSize = Font.custom("Geist-Medium", size: 48)
+        static let subtext = Font.custom("Geist-Regular", size: 13)
+    }
+
+    /// English is Söhne with PP Neue Montreal punctuation; Korean is Pretendard with Favorit punctuation.
+    /// Söhne (the website's trial cut) has only letters and digits; anything else it lacks falls
+    /// back to Geist, and Korean inside an English style falls through to Pretendard.
+    /// The Söhne and Pretendard files carry the line metrics of the Classic fonts they replace
+    /// (body: Geist, headings: PP Editorial, Korean headings: Noto Serif KR), so every line box
+    /// and everything laid out around it stays put. Regenerate with build_fonts.py in Fonts/.
+    /// The Söhne, Favorit and PP Neue Montreal files live in the git-ignored Fonts/Local folder (they
+    /// can't be redistributed); without them this style renders in fallback fonts.
+    private enum Sohne {
+        // Headings - Söhne Kräftig
+        static let h1 = english(.medium, size: 34, heading: true)
+        static let h2 = english(.medium, size: 28, heading: true)
+        static let h3 = english(.medium, size: 20, heading: true)
+
+        // Body - Söhne Buch, small body Leicht (website-style)
+        static let b1 = english(.regular, size: 20)
+        static let b2 = english(.regular, size: 17)
+        static let b3 = english(.light, size: 15)
+
+        // Korean - Pretendard
+        static let h1Korean = korean(.semibold, size: 32, heading: true)
+        static let h2Korean = korean(.semibold, size: 28, heading: true)
+        static let h3Korean = korean(.medium, size: 20, heading: true)
+        static let b1Korean = korean(.medium, size: 20)
+        static let b2Korean = korean(.medium, size: 17)
+        static let b3Korean = korean(.regular, size: 14)
+        static let subtextKorean = korean(.regular, size: 13)
+
+        static let codeEntry = english(.semibold, size: 26)
+        static let emojiSize = english(.medium, size: 48)
+        static let subtext = english(.light, size: 13)
+
+        enum Weight {
+            case light, regular, medium, semibold
+
+            var names: (sohne: String, pretendard: String, neue: String, favorit: String, geist: String) {
+                switch self {
+                case .light: return ("Leicht", "Regular", "NeueMontrealPunct-Light", "FavoritPunct-Light", "Geist-Regular")
+                case .regular: return ("Buch", "Regular", "NeueMontrealPunct-Regular", "FavoritPunct-Regular", "Geist-Regular")
+                case .medium: return ("Kraftig", "Medium", "NeueMontrealPunct-Medium", "FavoritPunct-Medium", "Geist-Medium")
+                case .semibold: return ("Halbfett", "SemiBold", "NeueMontrealPunct-Semibold", "FavoritPunct-Bold", "Geist-SemiBold")
+                }
+            }
+        }
+
+        /// Söhne, with PP Neue Montreal for punctuation, Geist for anything else Söhne lacks, then Pretendard for Korean.
+        /// `heading` picks the cut with PP Editorial's line box instead of Geist's.
+        static func english(_ weight: Weight, size: CGFloat, heading: Bool = false) -> Font {
+            let n = weight.names
+            let primary = (heading ? "TestSohneHeading-" : "TestSohne-") + n.sohne
+            return cascade(primary, size: size, fallbacks: [n.neue, n.geist, "PretendardText-" + n.pretendard])
+        }
+
+        /// Pretendard, with Favorit for punctuation. `heading` picks the cut with Noto Serif KR's line box.
+        static func korean(_ weight: Weight, size: CGFloat, heading: Bool = false) -> Font {
+            let n = weight.names
+            let primary = (heading ? "PretendardHeading-" : "PretendardText-") + n.pretendard
+            return cascade(primary, size: size, fallbacks: [n.favorit, n.geist])
+        }
+
+        /// Sized once at first use for the current Dynamic Type setting, like Font.custom's default scaling.
+        static func cascade(_ primary: String, size: CGFloat, fallbacks: [String]) -> Font {
+            #if canImport(UIKit)
+            let scaled = UIFontMetrics.default.scaledValue(for: size)
+            let descriptor = UIFontDescriptor(name: primary, size: scaled).addingAttributes([
+                .cascadeList: fallbacks.map { UIFontDescriptor(name: $0, size: scaled) }
+            ])
+            return Font(UIFont(descriptor: descriptor, size: scaled) as CTFont)
+            #else
+            return Font.custom(primary, size: size)
+            #endif
+        }
+    }
 
     /// Prints all available font names to the console for debugging
     static func printAllFontNames() {
