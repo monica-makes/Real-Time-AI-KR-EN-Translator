@@ -1,7 +1,7 @@
 """Translation service using Claude API."""
 
 import logging
-from typing import AsyncIterator
+from typing import AsyncIterator, Optional
 
 import anthropic
 
@@ -10,6 +10,18 @@ from ..models import TranslationDirection
 from ..session.context import SharedTranslationContext
 
 logger = logging.getLogger(__name__)
+
+# between_tools (thinking off) is Claude Sonnet 5.5-only - drop it if this model changes
+TRANSLATION_MODEL = "claude-sonnet-5-5"
+
+
+class TranslationRefused(Exception):
+    """Claude declined to translate (stop_reason "refusal")."""
+
+    def __init__(self, category: Optional[str], recommended_model: Optional[str] = None):
+        super().__init__(f"translation refused (category={category})")
+        self.category = category
+        self.recommended_model = recommended_model
 
 
 KO_TO_EN_PROMPT = """You are a real-time Korean to English translator.
@@ -144,15 +156,38 @@ class TranslatorService:
         try:
             full_translation = []
 
-            async with self._client.messages.stream(
-                model="claude-sonnet-5",
-                max_tokens=200,
+            async with self._client.beta.messages.stream(
+                model=TRANSLATION_MODEL,
+                max_tokens=1024,  # Thinking would count here too; only generated tokens are billed
+                thinking={"type": "between_tools"},  # No thinking delay ({"type": "disabled"} is a 400 on 5.5)
+                output_config={"effort": "low"},  # between_tools requires effort high or below
+                # Server-side fallback: cyber / frontier_llm declines are retried on Claude Sonnet 5
+                betas=["server-side-fallback-2026-07-01"],
+                fallbacks="default",
                 system=system_prompt,
                 messages=[{"role": "user", "content": f"Translate: {text}"}]
             ) as stream:
                 async for token in stream.text_stream:
                     full_translation.append(token)
                     yield token
+                final = await stream.get_final_message()
+
+            # A refusal can arrive before any text or mid-stream - never save it as a translation
+            if final.stop_reason == "refusal":
+                details = final.stop_details
+                category = details.category if details else None
+                recommended = getattr(details, "recommended_model", None)
+                logger.warning(
+                    f"Translation refused (category={category}, "
+                    f"recommended_model={recommended}): '{text}'"
+                )
+                raise TranslationRefused(category, recommended)
+            if final.stop_reason == "max_tokens":
+                logger.warning(f"Translation truncated at max_tokens: '{text}'")
+            iterations = getattr(getattr(final, "usage", None), "iterations", None) or []
+            fallback_ran = any(getattr(it, "type", None) == "fallback_message" for it in iterations)
+            if fallback_ran or not final.model.startswith(TRANSLATION_MODEL):
+                logger.info(f"Translation served by fallback model {final.model}")
 
             # Add to shared context
             translated_text = "".join(full_translation)
@@ -166,6 +201,8 @@ class TranslatorService:
                 f"Translation ({direction.value}): '{text}' -> '{translated_text}'"
             )
 
+        except TranslationRefused:
+            raise  # Already logged as a warning above
         except Exception as e:
             logger.error(f"Translation error: {e}")
             raise

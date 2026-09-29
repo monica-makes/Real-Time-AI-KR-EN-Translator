@@ -8,13 +8,13 @@ pydantic>=2.5.0
 pydantic-settings>=2.1.0
 
 # Speech-to-Text
-deepgram-sdk>=3.0.0
+deepgram-sdk>=7.9,<8  # stt.py uses the v7 listen.v1 socket API (send_keep_alive, send_finalize)
 
 # Translation
-anthropic>=0.40.0
+anthropic>=1.7,<2  # Sonnet 5.5: output_config, between_tools, server-side fallbacks
 
 # Text-to-Speech
-elevenlabs>=1.0.0
+elevenlabs>=2.68,<3
 
 # Audio processing for gender detection
 librosa>=0.10.0
