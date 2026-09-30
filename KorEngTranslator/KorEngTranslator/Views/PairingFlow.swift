@@ -699,7 +699,6 @@ struct PairingScreen: View {
                         Text("Can't find your partner?")
                             .font(AppTypography.b2)
                             .foregroundColor(AppColors.secondaryText)
-                            .underline()
                             // Rolls in letter by letter, left to right, once the search has run 20s
                             .staggeredReveal(delay: 20)
                     }
@@ -3963,7 +3962,6 @@ struct PairingScreenKorean: View {
                         Text("파트너를 찾을 수 없나요?")
                             .font(AppTypography.b2Korean)
                             .foregroundColor(AppColors.secondaryText)
-                            .underline()
                             // Rolls in letter by letter, left to right, once the search has run 20s
                             .staggeredReveal(delay: 20)
                     }
