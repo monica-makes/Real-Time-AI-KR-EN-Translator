@@ -258,6 +258,9 @@ struct AppStyle {
     /// Corner radius of every card and box. The language cards set it (Card radius in the home
     /// screen's Debug layout panel) and everything else follows.
     static var cornerRadius: CGFloat { HomeLayoutTuning.shared.cardRadius }
+    /// The smaller boxes keep 12pt corners: the code entry boxes, the share-code box and the live
+    /// screen's language boxes
+    static let smallCornerRadius: CGFloat = 12
 }
 
 // MARK: - Spacing

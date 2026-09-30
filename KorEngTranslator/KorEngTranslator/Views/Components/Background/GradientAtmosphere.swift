@@ -82,7 +82,7 @@ enum GradientAtmosphere {
 
     // Colour: the palette stays coral / amber / peach, pulled toward the gradient lab's muted
     // oranges and reds (1 = the colours as defined in AppColors)
-    static let saturation: Double = 0.72
+    static let saturation: Double = 0.76
 
     // Debug builds tune these three live from the BACKGROUND section of the debug card
     // (GradientAtmosphereDebugPicker); the values above are the defaults and what Release uses.

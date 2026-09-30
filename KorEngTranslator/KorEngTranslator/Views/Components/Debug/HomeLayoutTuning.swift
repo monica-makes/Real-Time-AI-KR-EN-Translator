@@ -19,6 +19,11 @@ final class HomeLayoutTuning {
     static let defaultCardTop: CGFloat = 308
     static let defaultCardHeight: CGFloat = 212
     static let defaultCardRadius: CGFloat = 20   // every card and box in the app uses it (AppStyle.cornerRadius)
+    static let defaultTitleBodyGap: CGFloat = 16
+
+    /// Every page after home sets its body this much closer to its title than home does;
+    /// nothing below the body moves
+    static let bodyLiftAfterHome: CGFloat = 4
 
     /// Title bottom to body top. Nil keeps today's spacing.
     var titleBodyGap: CGFloat? = nil
@@ -50,6 +55,11 @@ final class HomeLayoutTuning {
 
     /// The gaps as currently laid out
     var currentTitleBodyGap: CGFloat { bodyTop - textTop - titleHeight }
+
+    /// Home's title-body gap for the pages after it to copy (today's 16 until home has measured its title)
+    var titleBodySpacing: CGFloat {
+        titleHeight > 0 ? currentTitleBodyGap : titleBodyGap ?? Self.defaultTitleBodyGap
+    }
     var currentTextCardsGap: CGFloat { cardTop - bodyTop - bodyHeight }
 
     /// Lowest the title can start: with the body touching the cards
