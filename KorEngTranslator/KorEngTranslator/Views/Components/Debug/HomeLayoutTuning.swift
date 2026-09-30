@@ -15,9 +15,9 @@ final class HomeLayoutTuning {
 
     // Today's layout (points from the top of the safe area)
     static let defaultTextTop: CGFloat = 166   // title top; the 40pt title ends 16pt above the body
-    static let defaultBodyTop: CGFloat = 222   // the two-line body (46pt) ends 40pt above the cards
-    static let defaultCardTop: CGFloat = 308
-    static let defaultCardHeight: CGFloat = 212
+    static let defaultBodyTop: CGFloat = 222   // the two-line body (46pt) ends 44pt above the cards
+    static let defaultCardTop: CGFloat = 312
+    static let defaultCardHeight: CGFloat = 216
     static let defaultCardRadius: CGFloat = 20   // every card and box in the app uses it (AppStyle.cornerRadius)
     static let defaultTitleBodyGap: CGFloat = 16
 

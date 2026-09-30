@@ -51,14 +51,17 @@ enum ChatTextReveal: String, CaseIterable {
 /// Text that fades in its new words as it grows, for live captions and translations.
 ///
 /// Words already shown stay put when the text changes; words that are new (or were revised)
-/// fade in per `reveal`. Layout never moves: invisible words still take their space, so a line
-/// wraps the moment its word arrives. Only animates while a word is fading.
+/// fade in per `reveal`, starting `startDelay` after they arrive. Layout never moves: invisible
+/// words still take their space, so a line wraps (and a chat bubble grows) the moment its word
+/// arrives, and the word fills in after. Only animates while a word is fading.
 struct RevealingText: View {
     let text: String
     let font: Font
     let color: Color
     let lineSpacing: CGFloat
     let reveal: ChatTextReveal
+    /// How long new words wait before they start fading in
+    let startDelay: TimeInterval
 
     /// The text split into words, each with its trailing whitespace
     @State private var words: [String]
@@ -67,15 +70,17 @@ struct RevealingText: View {
     /// When each word after `settled` starts fading in
     @State private var starts: [Date]
 
-    init(text: String, font: Font, color: Color, lineSpacing: CGFloat = 0, reveal: ChatTextReveal) {
+    init(text: String, font: Font, color: Color, lineSpacing: CGFloat = 0, reveal: ChatTextReveal,
+         startDelay: TimeInterval = 0) {
         self.text = text
         self.font = font
         self.color = color
         self.lineSpacing = lineSpacing
         self.reveal = reveal
+        self.startDelay = startDelay
         // The first words fade in too: a new bubble or translation row is new text
         let words = Self.words(in: text)
-        let starts = Self.schedule(words.count, after: nil, style: reveal)
+        let starts = Self.schedule(words.count, after: nil, delay: startDelay, style: reveal)
         _words = State(initialValue: words)
         _settled = State(initialValue: reveal == .instant ? words.count : 0)
         _starts = State(initialValue: reveal == .instant ? [] : starts)
@@ -147,14 +152,14 @@ struct RevealingText: View {
             starts = []
             return
         }
-        starts = keptStarts + Self.schedule(newWords.count - unchanged, after: keptStarts.last, style: reveal)
+        starts = keptStarts + Self.schedule(newWords.count - unchanged, after: keptStarts.last, delay: startDelay, style: reveal)
     }
 
-    /// Start times for `count` new words: from now, each `stagger` after the one before
-    private static func schedule(_ count: Int, after previous: Date?, style: ChatTextReveal) -> [Date] {
+    /// Start times for `count` new words: from `delay` after now, each `stagger` after the one before
+    private static func schedule(_ count: Int, after previous: Date?, delay: TimeInterval, style: ChatTextReveal) -> [Date] {
         guard count > 0 else { return [] }
-        let now = Date()
-        var next = max(now, previous.map { $0.addingTimeInterval(style.stagger) } ?? now)
+        let first = Date().addingTimeInterval(delay)
+        var next = max(first, previous.map { $0.addingTimeInterval(style.stagger) } ?? first)
         var result: [Date] = []
         result.reserveCapacity(count)
         for _ in 0..<count {

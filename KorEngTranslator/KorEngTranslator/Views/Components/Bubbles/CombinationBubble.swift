@@ -10,6 +10,8 @@ struct CombinationBubble: View {
 
     // Main orb group
     @State private var orbRotation: Double = 0
+    /// The gradient halo turns on its own, slower clock
+    @State private var haloRotation: Double = 0
     @State private var orbScale: CGFloat = 1.0
     @State private var topBulge: CGFloat = 0
     @State private var rightBulge: CGFloat = 0
@@ -29,7 +31,7 @@ struct CombinationBubble: View {
 
     // MARK: - Constants
 
-    private let backgroundSize: CGFloat = 400
+    private let backgroundSize: CGFloat = 360   // halo diameter (10% under the original 400)
     private let orbSize: CGFloat = 200
     private let containerSize: CGFloat = 450
 
@@ -44,9 +46,10 @@ struct CombinationBubble: View {
 
     var body: some View {
         ZStack {
-            // Layer 1: Gradient Blur Background
+            // Layer 1: Gradient Blur Background - breathes with the orb, turns on its own clock
             gradientBlurBackground
-                .rotationEffect(.degrees(orbRotation))
+                .rotationEffect(.degrees(haloRotation))
+                .scaleEffect(orbScale)
 
             // Layers 2-5: Main Orb Group
             mainOrbGroup
@@ -240,10 +243,13 @@ struct CombinationBubble: View {
     private func startAnimations() {
         // Stagger animation starts slightly to avoid SwiftUI batching issues
 
-        // 1. Orb & Background Rotation (slow, continuous)
+        // 1. Orb rotation, and the halo's own slower one (slow, continuous)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             withAnimation(.linear(duration: 30).repeatForever(autoreverses: false)) {
                 orbRotation = 360
+            }
+            withAnimation(.linear(duration: 44).repeatForever(autoreverses: false)) {
+                haloRotation = 360
             }
         }
 
