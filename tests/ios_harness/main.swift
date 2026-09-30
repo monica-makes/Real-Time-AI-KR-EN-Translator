@@ -130,6 +130,66 @@ func runOffline() {
     }
     check(small.lines.map { $0.id } == ["s3", "s4"], "log is capped at maxLines")
 
+    // Chat bubbles: live captions, then finals and translations, grouped per speaker turn
+    let start = Date(timeIntervalSince1970: 1_000)
+    func at(_ seconds: Double) -> Date { start.addingTimeInterval(seconds) }
+    let ko = TranslationDirection.koreanToEnglish, en = TranslationDirection.englishToKorean
+    var chat = ConversationLog()
+    chat.apply(TranscriptEvent(text: "안녕하세요", isFinal: false, segmentId: nil, direction: ko), side: .partner, at: at(0))
+    chat.apply(TranscriptEvent(text: "안녕하세요 오늘", isFinal: false, segmentId: nil, direction: ko), side: .partner, at: at(0.3))
+    var turns = chat.turns
+    check(turns.count == 1 && turns[0].isLive && turns[0].side == .partner && turns[0].original == "안녕하세요 오늘",
+          "interim caption shows as a live bubble")
+    let liveBubble = turns.first?.id
+    chat.apply(TranscriptEvent(text: "안녕하세요.", isFinal: true, segmentId: "p1", direction: ko), side: .partner, at: at(0.6))
+    turns = chat.turns
+    check(turns.count == 1 && turns[0].id == liveBubble, "final lands in the live bubble (same bubble id)")
+    check(turns[0].original == "안녕하세요. 오늘" && turns[0].isLive, "final replaces the start of the caption; the rest stays live")
+    chat.apply(TranslationEvent(original: "안녕하세요.", translated: "Hello.", segmentId: "p1", direction: ko, honorific: nil), side: .partner, at: at(1.0))
+    chat.apply(TranscriptEvent(text: "오늘 날씨가 좋네요.", isFinal: true, segmentId: "p2", direction: ko), side: .partner, at: at(1.5))
+    turns = chat.turns
+    check(turns.count == 1 && turns[0].original == "안녕하세요. 오늘 날씨가 좋네요." && !turns[0].isLive,
+          "second segment joins the bubble and ends the caption")
+    check(turns[0].translated == "Hello." && turns[0].isAwaitingTranslation, "translation row so far; one segment still pending")
+    chat.apply(TranslationEvent(original: "오늘 날씨가 좋네요.", translated: "The weather is nice today.", segmentId: "p2", direction: ko, honorific: nil), side: .partner, at: at(2.0))
+    check(chat.turns[0].translated == "Hello. The weather is nice today." && !chat.turns[0].isAwaitingTranslation,
+          "translation row joins the bubble's segments")
+
+    chat.apply(TranscriptEvent(text: "It really", isFinal: false, segmentId: nil, direction: en), side: .me, at: at(2.5))
+    chat.apply(TranscriptEvent(text: "It really is.", isFinal: true, segmentId: "m1", direction: en), side: .me, at: at(3.0))
+    turns = chat.turns
+    check(turns.count == 2 && turns[1].side == .me && turns[1].original == "It really is." && !turns[1].isLive,
+          "my reply is its own bubble")
+
+    chat.apply(TranscriptEvent(text: "네", isFinal: true, segmentId: "p3", direction: ko), side: .partner, at: at(3.5))
+    check(chat.turns.count == 3 && chat.turns[2].side == .partner, "partner's next words start a new bubble after mine")
+
+    chat.apply(TranscriptEvent(text: "그런데", isFinal: true, segmentId: "p4", direction: ko), side: .partner, at: at(20))
+    check(chat.turns.count == 4, "a pause longer than turnGap starts a new bubble")
+
+    chat.apply(TranscriptEvent(text: "뭐라고", isFinal: false, segmentId: nil, direction: ko), side: .partner, at: at(20.5))
+    chat.apply(TranscriptEvent(text: "무엇을", isFinal: true, segmentId: "p5", direction: ko), side: .partner, at: at(21))
+    check(chat.liveCaptions[.partner] == nil && chat.turns.count == 4 && chat.turns.last?.original == "그런데 무엇을"
+          && chat.turns.last?.isLive == false, "a caption the final doesn't match is cleared")
+
+    var ending = ConversationLog()
+    ending.apply(TranscriptEvent(text: "hello the", isFinal: false, segmentId: nil, direction: en), side: .me, at: at(0))
+    ending.apply(TranscriptEvent(text: "안녕", isFinal: false, segmentId: nil, direction: ko), side: .partner, at: at(0.1))
+    ending.endLiveCaptions(of: .partner)
+    check(ending.liveCaptions.keys.map { $0 } == [.me] && ending.turns.count == 1, "partner leaving ends only their live caption")
+    ending.endLiveCaptions()
+    check(ending.liveCaptions.isEmpty && ending.turns.isEmpty, "a dropped connection ends every live caption")
+
+    var full = ConversationLog()
+    for i in 0..<5 {
+        full.apply(TranscriptEvent(text: "s\(i)", isFinal: true, segmentId: "f\(i)", direction: en), side: .me, at: at(Double(i)))
+    }
+    check(full.turns.map { $0.original } == ["s0 s1 s2 s3", "s4"], "a bubble holds at most maxSegmentsPerTurn segments")
+
+    check(ConversationLog.remainder(of: "see you tomorrow", after: "See you.") == "tomorrow", "caption remainder ignores case and punctuation")
+    check(ConversationLog.remainder(of: "see youtube", after: "see you") == nil, "caption remainder stops only at a word boundary")
+    check(ConversationLog.remainder(of: "see", after: "see you") == nil, "caption remainder is nil when the final is longer")
+
     finish()
 }
 

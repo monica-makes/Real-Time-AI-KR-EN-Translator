@@ -143,7 +143,7 @@ struct PairingModeDebugPicker: View {
 struct TypographyDebugPicker: View {
     var onDarkBackground = false
 
-    @AppStorage(TypographyStyle.storageKey) private var style: TypographyStyle = .classic
+    @AppStorage(TypographyStyle.storageKey) private var style: TypographyStyle = TypographyStyle.debugDefault
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -317,11 +317,15 @@ struct WelcomeScreenLangSelect: View {
             if !showNewScreen {
                 Group {
                     // Welcome heading with typewriter effect - fixed position from top
+                    // (positions come from HomeLayoutTuning: today's layout, tunable in Debug)
                     welcomeHeadingView
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: {
+                            HomeLayoutTuning.shared.noteTitleHeight($0)
+                        }
                         .opacity(headingOpacity)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.leading, 20)
-                        .padding(.top, AppSpacing.welcomeContentStart - 8)
+                        .padding(.horizontal, 20)
+                        .padding(.top, HomeLayoutTuning.shared.textTop)
                         .frame(maxHeight: .infinity, alignment: .top)
 
                     // Subtitle with fade effect - fixed position from top
@@ -330,13 +334,16 @@ struct WelcomeScreenLangSelect: View {
                         .lineSpacing(22 - 17)  // line height 22, font size 17
                         .tracking(0.37)
                         .foregroundColor(AppColors.primaryText)
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: {
+                            HomeLayoutTuning.shared.noteBodyHeight($0)
+                        }
                         .opacity(subtitleOpacity)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.leading, 20)
-                        .padding(.top, 236)
+                        .padding(.horizontal, 20)
+                        .padding(.top, HomeLayoutTuning.shared.bodyTop)
                         .frame(maxHeight: .infinity, alignment: .top)
 
-                    // Language cards - fixed position at 358pt from top
+                    // Language cards - fixed position from top
                     VStack {
                         HStack(spacing: AppSpacing.betweenCards) {
                             LanguageCard(
@@ -372,7 +379,12 @@ struct WelcomeScreenLangSelect: View {
 
                         Spacer()
                     }
-                    .padding(.top, AppSpacing.cardsFromTop)
+                    .padding(.top, HomeLayoutTuning.shared.cardTop)
+
+                    #if DEBUG
+                    // Layout panel: try the text position, gaps, card height and corner radius
+                    HomeLayoutDebugPanel()
+                    #endif
                 }
                 .transition(.opacity)
             }
@@ -588,6 +600,9 @@ struct LanguageCard: View {
     let isSelected: Bool
     let action: () -> Void
 
+    /// Corner radius (today's 8pt; tunable from the home screen's Debug layout panel)
+    private var radius: CGFloat { HomeLayoutTuning.shared.cardRadius }
+
     private func triggerHaptic() {
         let impactFeedback = UIImpactFeedbackGenerator(style: .light)
         impactFeedback.impactOccurred()
@@ -601,7 +616,7 @@ struct LanguageCard: View {
             ZStack {
                 if !AppStyle.liquidGlassCards {
                     // Card background with glassmorphism
-                    RoundedRectangle(cornerRadius: 8)
+                    RoundedRectangle(cornerRadius: radius)
                         .fill(
                             LinearGradient(
                                 gradient: Gradient(colors: [
@@ -614,7 +629,7 @@ struct LanguageCard: View {
                             )
                         )
                         .background(
-                            RoundedRectangle(cornerRadius: 8)
+                            RoundedRectangle(cornerRadius: radius)
                                 .fill(
                                     LinearGradient(
                                         gradient: Gradient(colors: [
@@ -627,10 +642,10 @@ struct LanguageCard: View {
                                 )
                         )
                         // Glass rim sits under the selected stroke so it can't cover part of the 2pt line
-                        .overlay(GlassEdgeRim())
-                        .overlay(SelectedCardBorder(isSelected: isSelected))
+                        .overlay(GlassEdgeRim(cornerRadius: radius))
+                        .overlay(SelectedCardBorder(isSelected: isSelected, cornerRadius: radius))
                         .overlay(
-                            RoundedRectangle(cornerRadius: 8)
+                            RoundedRectangle(cornerRadius: radius)
                                 .stroke(
                                     LinearGradient(
                                         gradient: Gradient(colors: [
@@ -646,10 +661,10 @@ struct LanguageCard: View {
                         .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 1)
 
                     // Inner glow effect
-                    RoundedRectangle(cornerRadius: 8)
+                    RoundedRectangle(cornerRadius: radius)
                         .fill(Color.clear)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 8)
+                            RoundedRectangle(cornerRadius: radius)
                                 .stroke(
                                     LinearGradient(
                                         gradient: Gradient(colors: [
@@ -663,7 +678,7 @@ struct LanguageCard: View {
                                 )
                                 .blur(radius: 4)
                         )
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .clipShape(RoundedRectangle(cornerRadius: radius))
                 }
 
                 // Content
@@ -672,7 +687,9 @@ struct LanguageCard: View {
                     Text(language.flag)
                         .font(AppTypography.emojiSize)
                         .offset(y: -4)  // Move flag up 4px
-                        .padding(.bottom, 68)
+
+                    // Pins the name and abbreviation to the 24pt bottom padding
+                    Spacer(minLength: 0)
 
                     // Language name
                     Text(language.displayName)
@@ -692,16 +709,17 @@ struct LanguageCard: View {
                 .padding(.horizontal, 24)
                 .padding(.bottom, 24)
             }
-            .frame(width: 168, height: 212)
+            .frame(maxWidth: .infinity)  // Fill the row so both screen margins stay 20pt
+            .frame(height: HomeLayoutTuning.shared.cardHeight)  // grows downward; the name stays pinned to the bottom
             .if(AppStyle.liquidGlassCards) { card in
                 card
                     .glassEffect(
                         isSelected
                             ? Glass.regular.tint(AppColors.claudeDeepOrange.opacity(0.15)).interactive()
                             : Glass.regular.interactive(),
-                        in: .rect(cornerRadius: 8)
+                        in: .rect(cornerRadius: radius)
                     )
-                    .overlay(SelectedCardBorder(isSelected: isSelected))
+                    .overlay(SelectedCardBorder(isSelected: isSelected, cornerRadius: radius))
             }
             // Selected state shadows - always present, opacity controlled by isSelected
             .shadow(color: Color(hex: "B85C38").opacity(isSelected ? 0.15 : 0), radius: 10, x: 0, y: 0)

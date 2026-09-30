@@ -34,8 +34,14 @@ UTTERANCES = {
 
 # Per direction: (unpunctuated final, speech_final final, text the detector buffers)
 UNPUNCTUATED = {
-    "kr_to_en": ("오늘", "날씨", "오늘날씨"),
+    "kr_to_en": ("오늘", "날씨", "오늘 날씨"),
     "en_to_kr": ("see you", "tomorrow", "see you tomorrow"),
+}
+
+# Per direction: (a final the detector holds back, the interim that follows it)
+LIVE_CAPTION = {
+    "kr_to_en": ("오늘", "날씨가"),
+    "en_to_kr": ("see you", "tomorrow"),
 }
 
 
@@ -323,6 +329,29 @@ async def test_speech_final_flushes_without_utterance_end(kind):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("kind", PIPELINES)
+async def test_interim_caption_keeps_words_waiting_for_a_boundary(kind):
+    """Deepgram's interims restart after each final; the caption keeps the held-back words in front."""
+    stt = FakeSTT()
+    translator = FakeTranslator()
+    pipeline, _, _ = make_pipeline(kind, stt=stt, translator=translator)
+    interims = []
+    pipeline.on_interim = interims.append
+    held, following = LIVE_CAPTION[kind]
+    await pipeline.start()
+    try:
+        await stt.result_queue.put(STTResult(text=held, is_final=False))
+        await stt.result_queue.put(STTResult(text=held, is_final=True))
+        await stt.result_queue.put(STTResult(text=following, is_final=False))
+        await wait_until(lambda: len(interims) == 2)
+        assert translator.calls == []
+        assert [m.text for m in interims] == [held, f"{held} {following}"]
+        assert all(m.direction == PIPELINES[kind][1] for m in interims)
+    finally:
+        await asyncio.wait_for(pipeline.stop(), timeout=5)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", PIPELINES)
 async def test_late_utterance_end_does_not_glue_next_utterance(kind):
     """An UtteranceEnd arriving after the next utterance's first interim doesn't translate that interim early."""
     stt = FakeSTT()
@@ -348,8 +377,7 @@ async def test_late_utterance_end_does_not_glue_next_utterance(kind):
         await wait_until(lambda: len(translator.calls) >= 2)
         await asyncio.sleep(0.1)
 
-        expected_second = second.replace(" ", "") if kind == "kr_to_en" else second
-        assert translator.calls == [first, expected_second]
+        assert translator.calls == [first, second]
         assert len(audio_out) == 2
     finally:
         await asyncio.wait_for(pipeline.stop(), timeout=5)
@@ -567,7 +595,7 @@ async def test_flushed_trailing_text_gets_a_transcript_final(kind):
     finals = [msg for name, msg in events if name == "final"]
     assert len(translations) == 1
     assert [f.segment_id for f in finals] == [translations[0].segment_id]
-    assert finals[0].text.replace(" ", "") == buffered.replace(" ", "")
+    assert finals[0].text == buffered
     assert finals[0].direction == PIPELINES[kind][1]
     order = [name for name, _ in events]
     assert order.index("final") < order.index("translation")
