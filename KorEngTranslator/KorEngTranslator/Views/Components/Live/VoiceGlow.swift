@@ -387,46 +387,88 @@ private struct EdgeBeam: View {
         return stops
     }
 
-    var body: some View {
-        TimelineView(.animation(paused: !running || reduceMotion)) { timeline in
-            let turns = timeline.date.timeIntervalSinceReferenceDate / Self.period
-            let beam = AngularGradient(
-                stops: beamStops,
-                center: .center,
-                angle: .degrees(turns.truncatingRemainder(dividingBy: 1) * 360)
-            )
-            // The steady light in the palette's second color (for the rim, the orb's core)
-            let base = palette.rgb(1)
-            let edge = RoundedRectangle(cornerRadius: displayCornerRadius, style: .continuous)
+    /// The rim's blurred outlines, drawn once per screen size: the steady light already colored,
+    /// and the beams' shape in white for the turning gradient to shine through. Each frame then only
+    /// turns a gradient, instead of blurring five full-screen outlines (that made the chat stutter
+    /// while the partner talked: frames up to ~100ms apart, the app's CPU at 60-85%).
+    @State private var layers: RimLayers?
+    /// Shown once, nearly invisible, as the screen loads, so the images upload and the mask's shader
+    /// compiles then, not the first time the partner speaks (a ~0.4s pause on the simulator)
+    @State private var warmedUp = false
+    @Environment(\.displayScale) private var displayScale
 
-            ZStack {
-                // Steady warm light, so the corners never go dark between beams
-                edge.inset(by: 8).stroke(base.opacity(0.6), lineWidth: 34).blur(radius: 24)
-                edge.inset(by: 1).stroke(base.opacity(0.85), lineWidth: 3).blur(radius: 1.5)
-                // The moving beams: inner bloom, glow, core
-                edge.inset(by: 10).stroke(beam, lineWidth: 44).blur(radius: 28).opacity(0.7)
-                edge.inset(by: 3).stroke(beam, lineWidth: 12).blur(radius: 8).opacity(0.95)
-                edge.inset(by: 1.5).stroke(beam, lineWidth: 3).blur(radius: 0.6)
+    private struct RimLayers {
+        let size: CGSize
+        let steady: Image
+        let beams: Image
+    }
+
+    /// Only the bottom 40% of the screen, fading in above it
+    private static let bottomFade = LinearGradient(
+        stops: [
+            .init(color: .clear, location: 0.60),
+            .init(color: .black, location: 0.76),
+            .init(color: .black, location: 1)
+        ],
+        startPoint: .top,
+        endPoint: .bottom
+    )
+
+    var body: some View {
+        GeometryReader { proxy in
+            TimelineView(.animation(paused: !running || reduceMotion)) { timeline in
+                let turns = timeline.date.timeIntervalSinceReferenceDate / Self.period
+                if let layers, layers.size == proxy.size {
+                    ZStack {
+                        // Steady warm light, so the corners never go dark between beams
+                        layers.steady
+                            .resizable()
+                        // The moving beams: inner bloom, glow and core, colored by the turning gradient
+                        AngularGradient(
+                            stops: beamStops,
+                            center: .center,
+                            angle: .degrees(turns.truncatingRemainder(dividingBy: 1) * 360)
+                        )
+                        .mask(layers.beams.resizable())
+                    }
+                }
             }
-            // Only the bottom 40% of the screen, fading in above it
-            .mask {
-                LinearGradient(
-                    stops: [
-                        .init(color: .clear, location: 0.60),
-                        .init(color: .black, location: 0.76),
-                        .init(color: .black, location: 1)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            }
+            .onAppear { drawLayers(size: proxy.size) }
+            .onChange(of: proxy.size) { _, size in drawLayers(size: size) }
         }
         // Fades in and out over 450ms; brightens with the level on a quicker ease
         .opacity(Double(strength) * (0.45 + 0.55 * Double(level)))
         .animation(.easeOut(duration: 0.18), value: level)
-        .opacity(isActive ? 1 : 0)
+        .opacity(isActive ? 1 : (warmedUp ? 0 : 0.002))
         .animation(.easeInOut(duration: 0.45), value: isActive)
         .modifier(EffectClock(isOn: isActive, settle: 0.6, running: $running))
+    }
+
+    /// Draws the blurred outlines for this screen size (at most 2x: they're soft anyway)
+    private func drawLayers(size: CGSize) {
+        guard size.width > 0, size.height > 0, layers?.size != size else { return }
+        let edge = RoundedRectangle(cornerRadius: displayCornerRadius, style: .continuous)
+        // The steady light in the palette's second color (for the rim, the orb's core)
+        let base = palette.rgb(1)
+        let steady = ZStack {
+            edge.inset(by: 8).stroke(base.opacity(0.6), lineWidth: 34).blur(radius: 24)
+            edge.inset(by: 1).stroke(base.opacity(0.85), lineWidth: 3).blur(radius: 1.5)
+        }
+        let beams = ZStack {
+            edge.inset(by: 10).stroke(Color.white, lineWidth: 44).blur(radius: 28).opacity(0.7)
+            edge.inset(by: 3).stroke(Color.white, lineWidth: 12).blur(radius: 8).opacity(0.95)
+            edge.inset(by: 1.5).stroke(Color.white, lineWidth: 3).blur(radius: 0.6)
+        }
+        func image(of layer: some View) -> Image? {
+            let renderer = ImageRenderer(content: layer
+                .frame(width: size.width, height: size.height)
+                .mask(Self.bottomFade))
+            renderer.scale = min(displayScale, 2)
+            return renderer.uiImage.map { Image(uiImage: $0) }
+        }
+        guard let steadyImage = image(of: steady), let beamsImage = image(of: beams) else { return }
+        layers = RimLayers(size: size, steady: steadyImage, beams: beamsImage)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { warmedUp = true }
     }
 }
 
