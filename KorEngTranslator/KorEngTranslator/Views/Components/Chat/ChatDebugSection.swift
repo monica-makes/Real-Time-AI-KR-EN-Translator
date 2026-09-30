@@ -4,6 +4,8 @@ import SwiftUI
 /// Debug Controls > CHAT TEXT: how chat text streams in, and a scripted conversation to watch it
 struct ChatDebugSection: View {
     @Binding var conversation: ConversationLog
+    /// On while the demo plays, so the screen can show the mic control expanded
+    @Binding var isDemoPlaying: Bool
     /// The language this phone speaks (the demo gives the other one to the partner)
     let iSpeakKorean: Bool
 
@@ -28,10 +30,14 @@ struct ChatDebugSection: View {
                 chip("Play demo chat", isSelected: false) {
                     demo?.cancel()
                     conversation = ConversationLog()
-                    demo = ConversationDemo.play(into: $conversation, iSpeakKorean: iSpeakKorean)
+                    isDemoPlaying = true
+                    demo = ConversationDemo.play(into: $conversation, iSpeakKorean: iSpeakKorean) {
+                        isDemoPlaying = false
+                    }
                 }
                 chip("Clear", isSelected: false) {
                     demo?.cancel()
+                    isDemoPlaying = false
                     withAnimation(.smooth(duration: 0.3)) {
                         conversation = ConversationLog()
                     }
@@ -129,10 +135,13 @@ enum ConversationDemo {
         return steps
     }
 
-    /// Plays the script into `conversation`; cancel the task to stop it
+    /// Plays the script into `conversation`; cancel the task to stop it. `onFinish` runs once the
+    /// whole script has played (not when cancelled).
     @MainActor
-    static func play(into conversation: Binding<ConversationLog>, iSpeakKorean: Bool) -> Task<Void, Never> {
+    static func play(into conversation: Binding<ConversationLog>, iSpeakKorean: Bool,
+                     onFinish: (() -> Void)? = nil) -> Task<Void, Never> {
         Task { @MainActor in
+            defer { if !Task.isCancelled { onFinish?() } }
             for step in steps {
                 try? await Task.sleep(for: .seconds(step.delay))
                 guard !Task.isCancelled else { return }

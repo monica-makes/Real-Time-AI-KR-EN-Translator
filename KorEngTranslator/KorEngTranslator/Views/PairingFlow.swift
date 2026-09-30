@@ -690,7 +690,7 @@ struct PairingScreen: View {
                 .padding(.top, PartnerSearchLayoutTuning.shared.cardTop)
 
                 // Manual pairing button - at the bottom, like the Korean page
-                VStack(alignment: .leading, spacing: 0) {
+                VStack(spacing: 0) {
                     Spacer()
                     Button(action: {
                         let roomCode = String(format: "%06d", Int.random(in: 0...999999))
@@ -702,9 +702,10 @@ struct PairingScreen: View {
                             // Rolls in letter by letter, left to right, once the search has run 20s
                             .staggeredReveal(delay: 20)
                     }
-                    .padding(.bottom, 60)
+                    .padding(.bottom, 44)
                 }
-                // 60pt above the screen's bottom edge
+                // Centered, 44pt above the screen's bottom edge
+                .frame(maxWidth: .infinity)
                 .ignoresSafeArea(edges: .bottom)
             }
             .padding(.horizontal, 20)
@@ -2209,11 +2210,10 @@ struct ManualPairingScreen: View {
 
 // MARK: - Copy Button with Animation
 
+/// A bare icon, so it dims while pressed like iOS's own icon buttons (the default button style)
 struct CopyButton: View {
     let showCopiedFeedback: Bool
     let action: () -> Void
-
-    @State private var isPressed = false
 
     var body: some View {
         Button(action: action) {
@@ -2231,18 +2231,11 @@ struct CopyButton: View {
                     .resizable()
                     .frame(width: 24, height: 24)  // Decreased from 28x28
                     .foregroundColor(AppColors.primaryIcon)
-                    .scaleEffect(showCopiedFeedback ? 0.01 : (isPressed ? 0.9 : 1.0))
+                    .scaleEffect(showCopiedFeedback ? 0.01 : 1.0)
                     .opacity(showCopiedFeedback ? 0 : 1)
             }
             .frame(width: 24, height: 24)  // Decreased from 28x28
-            .animation(.easeInOut(duration: 0.15), value: isPressed)
             .animation(.easeInOut(duration: 0.15), value: showCopiedFeedback)
-        }
-        .buttonStyle(PlainButtonStyle())
-        .pressEvents {
-            isPressed = true
-        } onRelease: {
-            isPressed = false
         }
     }
 }
@@ -2340,9 +2333,9 @@ struct CodeDigitBox: View {
         // Error glow (conditional)
         .shadow(color: isError ? AppColors.errorRed.opacity(0.55) : Color.clear, radius: 6, x: 0, y: 0)
         .shadow(color: isError ? AppColors.errorRed.opacity(0.35) : Color.clear, radius: 12, x: 0, y: 0)
-        // Pressed: grows 14% on a bouncy spring, and springs back on release
+        // Pressed: grows 14% on iOS's press spring, and bounces back on its release spring
         .scaleEffect(isPressed ? 1.14 : 1)
-        .animation(.spring(duration: 0.35, bounce: 0.45), value: isPressed)
+        .animation(IOSPress.animation(pressed: isPressed), value: isPressed)
         .pressEvents(onPress: { if !isPressed { isPressed = true } }, onRelease: { isPressed = false })
         .animation(.easeInOut(duration: 0.2), value: isError)
         .animation(.easeInOut(duration: 0.3), value: isAnimatingOut)
@@ -2902,6 +2895,8 @@ struct LiveTranslationScreen: View {
     // Both sides of the conversation (my lines and the partner's), joined by the server's
     // segment id. The chat redesign will render all of it; for now the latest line is shown.
     @State private var conversation = ConversationLog()
+    /// The scripted demo chat is playing (debug): the mic control shows its live, expanded state
+    @State private var isDemoPlaying = false
 
     // MARK: - Debug Mode State
     @State private var showDebugMenu: Bool = false
@@ -3077,7 +3072,8 @@ struct LiveTranslationScreen: View {
             VStack {
                 Spacer()
                 MicButton(
-                    isSessionActive: $isSessionActive,
+                    // Expanded, as in a live conversation, while the demo chat plays
+                    isSessionActive: isDemoPlaying ? .constant(true) : $isSessionActive,
                     isPaused: isPaused,
                     isMenuOpen: isMicMenuOpen,
                     lift: isMicMenuOpen ? Self.micMenuLift : 0,
@@ -3454,7 +3450,8 @@ struct LiveTranslationScreen: View {
 
                         // Chat text reveal style, and a scripted conversation to watch it
                         // (kept near the top so "Play demo chat" shows without scrolling)
-                        ChatDebugSection(conversation: $conversation, iSpeakKorean: isKorean)
+                        ChatDebugSection(conversation: $conversation, isDemoPlaying: $isDemoPlaying,
+                                         iSpeakKorean: isKorean)
 
                         Divider()
                             .background(Color.white.opacity(0.2))
@@ -3627,7 +3624,10 @@ struct LiveTranslationScreen: View {
         }
         if args.contains("-chatDemo") {
             // Scripted two-person conversation, to screenshot the chat without a partner phone
-            _ = ConversationDemo.play(into: $conversation, iSpeakKorean: isKorean)
+            isDemoPlaying = true
+            _ = ConversationDemo.play(into: $conversation, iSpeakKorean: isKorean) {
+                isDemoPlaying = false
+            }
         }
     }
 
@@ -3953,7 +3953,7 @@ struct PairingScreenKorean: View {
                 .padding(.top, PartnerSearchLayoutTuning.shared.cardTop)
 
                 // Manual pairing button - at the bottom
-                VStack(alignment: .leading, spacing: 0) {
+                VStack(spacing: 0) {
                     Spacer()
                     Button(action: {
                         let roomCode = String(format: "%06d", Int.random(in: 0...999999))
@@ -3965,9 +3965,10 @@ struct PairingScreenKorean: View {
                             // Rolls in letter by letter, left to right, once the search has run 20s
                             .staggeredReveal(delay: 20)
                     }
-                    .padding(.bottom, 60)
+                    .padding(.bottom, 44)
                 }
-                // 60pt above the screen's bottom edge
+                // Centered, 44pt above the screen's bottom edge
+                .frame(maxWidth: .infinity)
                 .ignoresSafeArea(edges: .bottom)
             }
             .padding(.horizontal, 20)
