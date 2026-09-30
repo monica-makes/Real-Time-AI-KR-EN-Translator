@@ -255,6 +255,9 @@ struct AppStyle {
     // draws in, then the closed outline holds briefly before the transition
     static let cardSelectHold: Double = 0.1
     static let cardSelectNavigationDelay: Double = SelectedCardBorder.drawDuration + cardSelectHold
+    /// Corner radius of every card and box. The language cards set it (Card radius in the home
+    /// screen's Debug layout panel) and everything else follows.
+    static var cornerRadius: CGFloat { HomeLayoutTuning.shared.cardRadius }
 }
 
 // MARK: - Spacing
@@ -326,12 +329,12 @@ struct CodeBoxShadow: ViewModifier {
             .shadow(color: Color(hex: "0C0C0D").opacity(0.03), radius: 1, x: 0, y: 1)
             // Inner shadow
             .overlay(
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: AppStyle.cornerRadius)
                     .stroke(Color(hex: "ACACAC"), lineWidth: 4)
                     .blur(radius: 2)
                     .offset(x: 4, y: 4)
                     .mask(
-                        RoundedRectangle(cornerRadius: 8)
+                        RoundedRectangle(cornerRadius: AppStyle.cornerRadius)
                             .fill(
                                 LinearGradient(
                                     colors: [Color.black, Color.clear],
@@ -363,7 +366,7 @@ extension View {
 /// bottom-right corners, fading out along the edges in between. Strength is
 /// AppStyle.glassEdgeStrength. Sits under the selected outline so it can't cover the 2pt line.
 struct GlassEdgeRim: View {
-    var cornerRadius: CGFloat = 8
+    var cornerRadius: CGFloat = AppStyle.cornerRadius
 
     private static let rimGradient = LinearGradient(
         stops: [
@@ -390,6 +393,76 @@ struct GlassEdgeRim: View {
                 .strokeBorder(Self.rimGradient, lineWidth: 1.5)
         }
         .opacity(AppStyle.glassEdgeStrength)
+        .allowsHitTesting(false)
+    }
+}
+
+// MARK: - Glass Card Background
+
+/// The glassmorphism surface the language cards introduced: a white gradient over a pink / peach
+/// tint, the glass rim, a hairline gradient outline, a soft shadow and an inner glow. Boxes that
+/// should look like those cards put it behind their content.
+struct GlassCardBackground: View {
+    var cornerRadius: CGFloat = AppStyle.cornerRadius
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: cornerRadius)
+                .fill(
+                    LinearGradient(
+                        gradient: Gradient(colors: [
+                            Color.white.opacity(0.9),
+                            Color.white.opacity(0.7),
+                            Color.white.opacity(0.4)
+                        ]),
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .background(
+                    RoundedRectangle(cornerRadius: cornerRadius)
+                        .fill(
+                            LinearGradient(
+                                gradient: Gradient(colors: [
+                                    Color(red: 0.98, green: 0.43, blue: 0.85).opacity(0.4),
+                                    Color(red: 1.0, green: 0.71, blue: 0.45).opacity(0.3)
+                                ]),
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                )
+                .overlay(GlassEdgeRim(cornerRadius: cornerRadius))
+                .overlay(
+                    RoundedRectangle(cornerRadius: cornerRadius)
+                        .stroke(
+                            LinearGradient(
+                                gradient: Gradient(colors: [Color.white.opacity(0.6), Color.white.opacity(0.2)]),
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 1
+                        )
+                )
+                .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 1)
+
+            // Inner glow
+            RoundedRectangle(cornerRadius: cornerRadius)
+                .fill(Color.clear)
+                .overlay(
+                    RoundedRectangle(cornerRadius: cornerRadius)
+                        .stroke(
+                            LinearGradient(
+                                gradient: Gradient(colors: [Color(red: 0.45, green: 0.55, blue: 0.96).opacity(0.3), Color.clear]),
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 2
+                        )
+                        .blur(radius: 4)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+        }
         .allowsHitTesting(false)
     }
 }
@@ -460,7 +533,7 @@ struct CardBorderRoutes {
 /// default spring, which has a long tail and never visibly closes before the screen changes.
 struct SelectedCardBorder: View {
     let isSelected: Bool
-    var cornerRadius: CGFloat = 8
+    var cornerRadius: CGFloat = AppStyle.cornerRadius
 
     static let drawDuration: Double = 0.36
 
@@ -1269,8 +1342,8 @@ struct SecondaryRoundButton: View {
 // MARK: - Mic Menu Cards
 
 /// The voice & honorifics cards the mic control lifts to uncover (Figma "Korean AI Translator",
-/// node 300:13161): two 88pt glass cards 10pt apart, 346pt across, each a 28pt Phosphor icon over a
-/// 16pt label.
+/// node 300:13161): two 88pt glass cards, each a 28pt Phosphor icon over a 16pt label. The cards keep
+/// Figma's 168pt width and sit 20pt from the screen's edges, like the language boxes at the top.
 struct MicMenuCards: View {
     let isMaleVoice: Bool
     let voiceTitle: String
@@ -1282,13 +1355,18 @@ struct MicMenuCards: View {
     /// The cards come in (and go) over 400ms on the lift's ease-out
     static let revealAnimation = Animation.timingCurve(0.22, 1, 0.36, 1, duration: 0.4)
 
+    static let cardWidth: CGFloat = 168
+
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 0) {
             MicMenuCard(iconName: "gender-female", alternateIconName: "gender-male", showsAlternate: isMaleVoice,
                         title: voiceTitle, isKorean: isKorean, action: onVoiceTapped)
+                .frame(width: Self.cardWidth)
+            Spacer(minLength: 10)
             MicMenuCard(iconName: "crown-simple", title: honorificsTitle, isKorean: isKorean, action: onHonorificsTapped)
+                .frame(width: Self.cardWidth)
         }
-        .frame(width: 346)
+        .padding(.horizontal, 20)
     }
 }
 
@@ -1324,10 +1402,10 @@ private struct MicMenuCard: View {
             }
             .padding(.vertical, 16)
             .frame(maxWidth: .infinity)
-            .contentShape(.rect(cornerRadius: 8))
+            .contentShape(.rect(cornerRadius: AppStyle.cornerRadius))
         }
         .buttonStyle(.plain)
-        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 8))
+        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: AppStyle.cornerRadius))
     }
 
     private func icon(_ name: String) -> some View {

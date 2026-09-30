@@ -191,6 +191,7 @@ struct PairingModeDebugCard: View {
             }
             PairingModeDebugPicker(onSelect: onSelect)
             TypographyDebugPicker()
+            GradientAtmosphereDebugPicker()
         }
         .padding(16)
         .glassEffect(.regular, in: .rect(cornerRadius: 12))
@@ -312,6 +313,9 @@ struct WelcomeScreenLangSelect: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                 .offset(x: 20, y: -238)
                 .ignoresSafeArea(.keyboard)
+
+            // Film grain on the background, under the content
+            GrainOverlay()
 
             // Welcome screen content - fades out
             if !showNewScreen {
@@ -517,7 +521,14 @@ struct WelcomeScreenLangSelect: View {
 
 // MARK: - Gradient Orb
 
-struct GradientOrb: View {
+/// The classic three-layer orb. GradientOrb (Components/Background/GradientAtmosphere.swift)
+/// wraps it in drift, warp and grain.
+struct ClassicGradientOrb: View {
+    /// Motion multipliers: 1 is the original easing. `speed` shortens each swing's duration and
+    /// `movement` widens its travel and turn; the atmosphere (GradientAtmosphere) runs both above 1.
+    var speed: Double = 1
+    var movement: Double = 1
+
     // Animation states for each layer
     @State private var layer1Animate = false
     @State private var layer2Animate = false
@@ -530,10 +541,10 @@ struct GradientOrb: View {
                 .fill(AppColors.gradientCoral)
                 .frame(width: 366.72, height: 312.57)
                 .scaleEffect(layer1Animate ? 1.12 : 0.95)
-                .rotationEffect(.degrees(layer1Animate ? 15 : -15))
+                .rotationEffect(.degrees((layer1Animate ? 15 : -15) * movement))
                 .offset(
-                    x: layer1Animate ? 40 : -40,
-                    y: 92 + (layer1Animate ? -30 : 30)
+                    x: (layer1Animate ? 40 : -40) * movement,
+                    y: 92 + (layer1Animate ? -30 : 30) * movement
                 )
                 .blur(radius: 115.5)
 
@@ -542,10 +553,10 @@ struct GradientOrb: View {
                 .fill(AppColors.gradientAmber)
                 .frame(width: 195.67, height: 124.29)
                 .scaleEffect(layer2Animate ? 1.15 : 0.92)
-                .rotationEffect(.degrees(80 + (layer2Animate ? 10 : -10)))
+                .rotationEffect(.degrees(80 + (layer2Animate ? 10 : -10) * movement))
                 .offset(
-                    x: 40 + (layer2Animate ? 35 : -35),
-                    y: 20 + (layer2Animate ? -25 : 25)
+                    x: 40 + (layer2Animate ? 35 : -35) * movement,
+                    y: 20 + (layer2Animate ? -25 : 25) * movement
                 )
                 .blur(radius: 84)
 
@@ -554,17 +565,17 @@ struct GradientOrb: View {
                 .fill(AppColors.gradientPeach)
                 .frame(width: 195.67, height: 124.29)
                 .scaleEffect(layer3Animate ? 1.1 : 0.9)
-                .rotationEffect(.degrees(80 + (layer3Animate ? 8 : -8)))
+                .rotationEffect(.degrees(80 + (layer3Animate ? 8 : -8) * movement))
                 .offset(
-                    x: 60 + (layer3Animate ? 25 : -25),
-                    y: -10 + (layer3Animate ? -20 : 20)
+                    x: 60 + (layer3Animate ? 25 : -25) * movement,
+                    y: -10 + (layer3Animate ? -20 : 20) * movement
                 )
                 .blur(radius: 40)
         }
         .onAppear {
             // Layer 1: Slowest - 9s drift, 12s scale, 15s rotation
             withAnimation(
-                .easeInOut(duration: 9)
+                .easeInOut(duration: 9 / speed)
                 .repeatForever(autoreverses: true)
             ) {
                 layer1Animate = true
@@ -573,7 +584,7 @@ struct GradientOrb: View {
             // Layer 2: Medium - 7s timing, offset start for organic feel
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 withAnimation(
-                    .easeInOut(duration: 7)
+                    .easeInOut(duration: 7 / speed)
                     .repeatForever(autoreverses: true)
                 ) {
                     layer2Animate = true
@@ -583,7 +594,7 @@ struct GradientOrb: View {
             // Layer 3: Fastest - 6s timing, different offset
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                 withAnimation(
-                    .easeInOut(duration: 6)
+                    .easeInOut(duration: 6 / speed)
                     .repeatForever(autoreverses: true)
                 ) {
                     layer3Animate = true
@@ -776,25 +787,26 @@ struct EnglishSelectedScreen: View {
             // Selection screen
             if currentScreen == .selection {
                 ZStack {
-                    // Heading and body - positioned from top
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Let's get you connected.")
-                            .font(AppTypography.h2)
-                            .lineSpacing(39 - 28)  // line height 39, font size 28
-                            .tracking(0.672)
-                            .foregroundColor(AppColors.primaryText)
+                    // Heading and body - at the home screen's title and body tops (HomeLayoutTuning)
+                    Text("Let's get you connected.")
+                        .font(AppTypography.h2)
+                        .lineSpacing(39 - 28)  // line height 39, font size 28
+                        .tracking(0.672)
+                        .foregroundColor(AppColors.primaryText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 20)
+                        .padding(.top, HomeLayoutTuning.shared.textTop)
+                        .frame(maxHeight: .infinity, alignment: .top)
 
-                        Text("Choose one, and your partner will pick\nthe other.")
-                            .font(AppTypography.b2)
-                            .foregroundColor(AppColors.primaryText)
-                            .lineSpacing(22 - 17)
-                            .tracking(0.37)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.leading, 20)
-                    .padding(.trailing, 20)
-                    .padding(.top, AppSpacing.welcomeContentStart - 8)
-                    .frame(maxHeight: .infinity, alignment: .top)
+                    Text("Choose one, and your partner will pick\nthe other.")
+                        .font(AppTypography.b2)
+                        .foregroundColor(AppColors.primaryText)
+                        .lineSpacing(22 - 17)
+                        .tracking(0.37)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 20)
+                        .padding(.top, HomeLayoutTuning.shared.bodyTop)
+                        .frame(maxHeight: .infinity, alignment: .top)
 
                     // Get started cards - same position as page 1
                     VStack {
@@ -834,7 +846,7 @@ struct EnglishSelectedScreen: View {
 
                         Spacer()
                     }
-                    .padding(.top, AppSpacing.cardsFromTop)
+                    .padding(.top, HomeLayoutTuning.shared.cardTop)  // same Card Y as the language cards
 
                     // Back button - top left
                     VStack {
@@ -970,25 +982,26 @@ struct KoreanSelectedScreen: View {
             // Selection screen
             if currentScreen == .selection {
                 ZStack {
-                    // Heading and body - positioned from top (Korean)
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("연결해 드릴게요.")
-                            .font(AppTypography.h2Korean)
-                            .lineSpacing(38 - 28)
-                            .tracking(0.672)
-                            .foregroundColor(AppColors.primaryText)
+                    // Heading and body - at the home screen's title and body tops (HomeLayoutTuning, Korean)
+                    Text("연결해 드릴게요.")
+                        .font(AppTypography.h2Korean)
+                        .lineSpacing(38 - 28)
+                        .tracking(0.672)
+                        .foregroundColor(AppColors.primaryText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 20)
+                        .padding(.top, HomeLayoutTuning.shared.textTop)
+                        .frame(maxHeight: .infinity, alignment: .top)
 
-                        Text("둘 중 하나를 고르세요. 상대방은 나머지를\n선택하면 돼요.")
-                            .font(AppTypography.b2Korean)
-                            .foregroundColor(AppColors.primaryText)
-                            .lineSpacing(22 - 17)
-                            .tracking(0.37)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.leading, 20)
-                    .padding(.trailing, 20)
-                    .padding(.top, AppSpacing.welcomeContentStart - 8)
-                    .frame(maxHeight: .infinity, alignment: .top)
+                    Text("둘 중 하나를 고르세요. 상대방은 나머지를\n선택하면 돼요.")
+                        .font(AppTypography.b2Korean)
+                        .foregroundColor(AppColors.primaryText)
+                        .lineSpacing(22 - 17)
+                        .tracking(0.37)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 20)
+                        .padding(.top, HomeLayoutTuning.shared.bodyTop)
+                        .frame(maxHeight: .infinity, alignment: .top)
 
                     // Get started cards - same position as page 1
                     VStack {
@@ -1028,7 +1041,7 @@ struct KoreanSelectedScreen: View {
 
                         Spacer()
                     }
-                    .padding(.top, AppSpacing.cardsFromTop)
+                    .padding(.top, HomeLayoutTuning.shared.cardTop)  // same Card Y as the language cards
 
                     // Back button - top left
                     VStack {
@@ -1142,6 +1155,9 @@ struct GetStartedCard: View {
     var iconTopOffset: CGFloat = 0  // Additional offset to move icon down
     let action: () -> Void
 
+    /// Same corners as the language cards (tunable from the home screen's Debug layout panel)
+    private var radius: CGFloat { HomeLayoutTuning.shared.cardRadius }
+
     private func triggerHaptic() {
         let impactFeedback = UIImpactFeedbackGenerator(style: .light)
         impactFeedback.impactOccurred()
@@ -1154,7 +1170,7 @@ struct GetStartedCard: View {
         }) {
             ZStack {
                 // Card background with glassmorphism
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: radius)
                     .fill(
                         LinearGradient(
                             gradient: Gradient(colors: [
@@ -1167,7 +1183,7 @@ struct GetStartedCard: View {
                         )
                     )
                     .background(
-                        RoundedRectangle(cornerRadius: 8)
+                        RoundedRectangle(cornerRadius: radius)
                             .fill(
                                 LinearGradient(
                                     gradient: Gradient(colors: [
@@ -1180,10 +1196,10 @@ struct GetStartedCard: View {
                             )
                     )
                     // Glass rim sits under the outlines so it can't cover them
-                    .overlay(GlassEdgeRim())
-                    .overlay(SelectedCardBorder(isSelected: isSelected))
+                    .overlay(GlassEdgeRim(cornerRadius: radius))
+                    .overlay(SelectedCardBorder(isSelected: isSelected, cornerRadius: radius))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 8)
+                        RoundedRectangle(cornerRadius: radius)
                             .stroke(
                                 LinearGradient(
                                     gradient: Gradient(colors: [
@@ -1199,10 +1215,10 @@ struct GetStartedCard: View {
                     .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 1)
 
                 // Inner glow effect
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: radius)
                     .fill(Color.clear)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 8)
+                        RoundedRectangle(cornerRadius: radius)
                             .stroke(
                                 LinearGradient(
                                     gradient: Gradient(colors: [
@@ -1216,7 +1232,7 @@ struct GetStartedCard: View {
                             )
                             .blur(radius: 4)
                     )
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .clipShape(RoundedRectangle(cornerRadius: radius))
 
                 // Content - icon at top, title/subtitle at bottom (title grows up)
                 VStack(alignment: .leading, spacing: 0) {
@@ -1250,7 +1266,10 @@ struct GetStartedCard: View {
                 .padding(.horizontal, 24)
                 .padding(.bottom, 24)
             }
-            .frame(width: 168, height: 212)
+            // Same size as the language cards: fills the row (20pt margins) at the tuned card height,
+            // with the title and subtitle pinned to the bottom
+            .frame(maxWidth: .infinity)
+            .frame(height: HomeLayoutTuning.shared.cardHeight)
             // Selected state shadows
             .shadow(color: Color(hex: "B85C38").opacity(isSelected ? 0.15 : 0), radius: 10, x: 0, y: 0)
             .shadow(color: Color(hex: "E8714E").opacity(isSelected ? 0.50 : 0), radius: 16, x: 0, y: 0)
@@ -1298,6 +1317,9 @@ struct LookingForPartnerScreen: View {
                 .rotationEffect(.degrees(-80))
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                 .offset(x: 20, y: -238)
+
+            // Film grain on the background, under the content
+            GrainOverlay()
 
             // Content
             VStack(alignment: .leading, spacing: 0) {
@@ -1547,7 +1569,7 @@ struct HeadphoneStatusCard: View {
         }) {
             ZStack {
                 // Card background with glassmorphism (same as GetStartedCard)
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: AppStyle.cornerRadius)
                     .fill(
                         LinearGradient(
                             gradient: Gradient(colors: [
@@ -1560,7 +1582,7 @@ struct HeadphoneStatusCard: View {
                         )
                     )
                     .background(
-                        RoundedRectangle(cornerRadius: 8)
+                        RoundedRectangle(cornerRadius: AppStyle.cornerRadius)
                             .fill(
                                 LinearGradient(
                                     gradient: Gradient(colors: [
@@ -1575,7 +1597,7 @@ struct HeadphoneStatusCard: View {
                     // Glass rim sits under the outlines so it can't cover them
                     .overlay(GlassEdgeRim())
                     .overlay(
-                        RoundedRectangle(cornerRadius: 8)
+                        RoundedRectangle(cornerRadius: AppStyle.cornerRadius)
                             .stroke(
                                 LinearGradient(
                                     gradient: Gradient(colors: [
@@ -1591,10 +1613,10 @@ struct HeadphoneStatusCard: View {
                     .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 1)
 
                 // Inner glow effect
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: AppStyle.cornerRadius)
                     .fill(Color.clear)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 8)
+                        RoundedRectangle(cornerRadius: AppStyle.cornerRadius)
                             .stroke(
                                 LinearGradient(
                                     gradient: Gradient(colors: [
@@ -1608,7 +1630,7 @@ struct HeadphoneStatusCard: View {
                             )
                             .blur(radius: 4)
                     )
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .clipShape(RoundedRectangle(cornerRadius: AppStyle.cornerRadius))
 
                 // Content - icon at top, title/subtitle at bottom (same layout as GetStartedCard)
                 VStack(alignment: .leading, spacing: 0) {
@@ -1682,7 +1704,7 @@ struct SessionCard: View {
         }) {
             ZStack {
                 // Card background with glassmorphism
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: AppStyle.cornerRadius)
                     .fill(
                         LinearGradient(
                             gradient: Gradient(colors: [
@@ -1695,7 +1717,7 @@ struct SessionCard: View {
                         )
                     )
                     .background(
-                        RoundedRectangle(cornerRadius: 8)
+                        RoundedRectangle(cornerRadius: AppStyle.cornerRadius)
                             .fill(
                                 LinearGradient(
                                     gradient: Gradient(colors: [
@@ -1710,7 +1732,7 @@ struct SessionCard: View {
                     // Glass rim sits under the outlines so it can't cover them
                     .overlay(GlassEdgeRim())
                     .overlay(
-                        RoundedRectangle(cornerRadius: 8)
+                        RoundedRectangle(cornerRadius: AppStyle.cornerRadius)
                             .stroke(
                                 LinearGradient(
                                     gradient: Gradient(colors: [
@@ -1726,10 +1748,10 @@ struct SessionCard: View {
                     .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 1)
 
                 // Inner glow effect
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: AppStyle.cornerRadius)
                     .fill(Color.clear)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 8)
+                        RoundedRectangle(cornerRadius: AppStyle.cornerRadius)
                             .stroke(
                                 LinearGradient(
                                     gradient: Gradient(colors: [
@@ -1743,7 +1765,7 @@ struct SessionCard: View {
                             )
                             .blur(radius: 4)
                     )
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .clipShape(RoundedRectangle(cornerRadius: AppStyle.cornerRadius))
 
                 // Content
                 VStack(alignment: .leading, spacing: 0) {
