@@ -659,10 +659,10 @@ struct MicButton: View {
     // Secondary button offset from center (72/2 + 24 + 52/2 = 36 + 24 + 26 = 86)
     private let secondaryButtonOffset: CGFloat = 86
 
-    private enum PrimaryIcon { case mic, pause, play }
+    private enum PrimaryIcon { case mic, mute, play }
 
     private var primaryIcon: PrimaryIcon {
-        if isSessionActive { return .pause }
+        if isSessionActive { return .mute }
         return isPaused ? .play : .mic
     }
 
@@ -752,9 +752,9 @@ struct MicButton: View {
                             y: 1
                         )
 
-                    // Icon (44x44) - Mic before the first start and after Stop, Pause while listening,
-                    // Play while paused; each change is an icon swap
-                    ForEach([PrimaryIcon.mic, .pause, .play], id: \.self) { icon in
+                    // Icon (44x44) - Mic before the first start and after Stop, a coral slashed mic
+                    // (tap to pause) while listening, Play while paused; each change is an icon swap
+                    ForEach([PrimaryIcon.mic, .mute, .play], id: \.self) { icon in
                         primaryIconImage(icon)
                             .iconSwapShown(icon == primaryIcon)
                     }
@@ -762,7 +762,7 @@ struct MicButton: View {
                 .animation(reduceMotion ? nil : IconSwap.animation, value: primaryIcon)
             }
             .buttonStyle(MicPressStyle())
-            .accessibilityLabel(primaryIcon == .pause ? "Pause" : primaryIcon == .play ? "Resume" : "Start")
+            .accessibilityLabel(primaryIcon == .mute ? "Pause" : primaryIcon == .play ? "Resume" : "Start")
         }
     }
 
@@ -774,8 +774,15 @@ struct MicButton: View {
                 .font(.system(size: 24))
                 .foregroundColor(AppColors.whiteIcon)
                 .frame(width: 44, height: 44)
-        case .pause, .play:
-            Image(icon == .pause ? "pause" : "play")
+        case .mute:
+            // Phosphor microphone-slash-fill, the same family as Play
+            Image("microphone-slash-fill")
+                .renderingMode(.template)
+                .resizable()
+                .frame(width: 44, height: 44)
+                .foregroundColor(Color(hex: "FC757B"))
+        case .play:
+            Image("play")
                 .renderingMode(.template)
                 .resizable()
                 .frame(width: 44, height: 44)

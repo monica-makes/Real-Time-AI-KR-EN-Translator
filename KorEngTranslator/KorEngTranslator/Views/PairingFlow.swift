@@ -654,14 +654,13 @@ struct PairingScreen: View {
 
     var body: some View {
         ZStack {
-            // Content (background and gradient provided by parent WelcomeScreenLangSelect), placed like the home
-            // screen (HomeLayoutTuning): the title at its title top with the loading dots just under
-            // it, the subtitle home's title-body gap under the dots (less the lift every page after
-            // home gets), the card at its Card Y and card height
+            // Content (background and gradient provided by parent WelcomeScreenLangSelect), placed by
+            // PartnerSearchLayoutTuning: the title at home's title top, the loading dots 12pt under it,
+            // the subtitle 20pt under the dots, the card at home's Card Y and card height
             ZStack(alignment: .topLeading) {
                 VStack(alignment: .leading, spacing: 0) {
                     // Title
-                    Text("Looking for your partner...")
+                    Text("Looking for your partner.")
                         .font(AppTypography.h2)
                         .lineSpacing(39 - 28)
                         .tracking(0.672)
@@ -669,17 +668,17 @@ struct PairingScreen: View {
 
                     // Loading dots
                     BouncingDots()
-                        .padding(.top, 6)
+                        .padding(.top, PartnerSearchLayoutTuning.shared.titleDotsGap)
 
                     // Subtitle
                     Text("You'll both need the same WiFi\nand a pair of headphones.")
                         .font(AppTypography.b2)
                         .foregroundColor(AppColors.primaryText)
-                        .lineSpacing(22 - 17)
+                        .lineSpacing(PartnerSearchLayoutTuning.shared.bodyLineSpacing)
                         .tracking(0.37)
-                        .padding(.top, HomeLayoutTuning.shared.titleBodySpacing - HomeLayoutTuning.bodyLiftAfterHome)
+                        .padding(.top, PartnerSearchLayoutTuning.shared.dotsBodyGap)
                 }
-                .padding(.top, HomeLayoutTuning.shared.textTop)
+                .padding(.top, PartnerSearchLayoutTuning.shared.titleTop)
 
                 // Headphone status card
                 PairingHeadphoneStatusCard(
@@ -688,7 +687,26 @@ struct PairingScreen: View {
                         openBluetoothSettings()
                     }
                 )
-                .padding(.top, HomeLayoutTuning.shared.cardTop)
+                .padding(.top, PartnerSearchLayoutTuning.shared.cardTop)
+
+                // Manual pairing button - at the bottom, like the Korean page
+                VStack(alignment: .leading, spacing: 0) {
+                    Spacer()
+                    Button(action: {
+                        let roomCode = String(format: "%06d", Int.random(in: 0...999999))
+                        onManualPairing?(roomCode)
+                    }) {
+                        Text("Can't find your partner?")
+                            .font(AppTypography.b2)
+                            .foregroundColor(AppColors.secondaryText)
+                            .underline()
+                            // Rolls in letter by letter, left to right, once the search has run 20s
+                            .staggeredReveal(delay: 20)
+                    }
+                    .padding(.bottom, 60)
+                }
+                // 60pt above the screen's bottom edge
+                .ignoresSafeArea(edges: .bottom)
             }
             .padding(.horizontal, 20)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -707,14 +725,12 @@ struct PairingScreen: View {
                 Spacer()
             }
 
-            // DEBUG: Explicit controls panel at bottom
+            // DEBUG: Explicit controls panel at bottom (folds into a ladybug), and the layout panel
             #if DEBUG
-            VStack {
-                Spacer()
+            CollapsibleDebugControls {
                 debugControlsPanel
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 40)
             }
+            PartnerSearchLayoutPanel()
             #endif
         }
         .onAppear {
@@ -983,6 +999,8 @@ struct PairingHeadphoneStatusCard: View {
     let isConnected: Bool
     var onTap: (() -> Void)?
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     private func triggerHaptic() {
         #if os(iOS)
         let impactFeedback = UIImpactFeedbackGenerator(style: .light)
@@ -1064,26 +1082,39 @@ struct PairingHeadphoneStatusCard: View {
 
                 // Content - icon at top, title/subtitle at bottom (same layout as GetStartedCard)
                 VStack(alignment: .leading, spacing: 0) {
-                    // Icon at top
-                    Image(isConnected ? "headphones-connected-color" : "not-connected-headphones-color")
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 60, height: 60)
+                    // Icon at top - swaps when the check succeeds (IconSwap), with the text below
+                    ZStack {
+                        Image("not-connected-headphones-color")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 60, height: 60)
+                            .iconSwapShown(!isConnected)
+                        Image("headphones-connected-color")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 60, height: 60)
+                            .iconSwapShown(isConnected)
+                    }
+                    .animation(reduceMotion ? nil : IconSwap.animation, value: isConnected)
 
                     Spacer()
 
-                    // Title - grows upward from subtitle
-                    Text(isConnected ? "Headphones connected" : "No headphones connected")
-                        .font(AppTypography.b1)
-                        .tracking(0.48)
-                        .foregroundColor(Color(red: 0.07, green: 0.07, blue: 0.07))
-                        .padding(.bottom, 6)
+                    // Title - grows upward from subtitle; text-swaps with the icon
+                    SwappingText(isConnected ? "Headphones connected" : "No headphones connected") {
+                        Text($0)
+                            .font(AppTypography.b1)
+                            .tracking(0.48)
+                            .foregroundColor(Color(red: 0.07, green: 0.07, blue: 0.07))
+                    }
+                    .padding(.bottom, 6)
 
                     // Subtitle - fixed at bottom
-                    Text(isConnected ? "You're ready to go!" : "Tap here to connect them now")
-                        .font(AppTypography.b3)
-                        .tracking(0.33)
-                        .foregroundColor(Color(red: 0.07, green: 0.07, blue: 0.07).opacity(0.7))
+                    SwappingText(isConnected ? "You're ready to go!" : "Tap here to connect them now") {
+                        Text($0)
+                            .font(AppTypography.b3)
+                            .tracking(0.33)
+                            .foregroundColor(Color(red: 0.07, green: 0.07, blue: 0.07).opacity(0.7))
+                    }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .padding(.top, 16)
@@ -1103,6 +1134,8 @@ struct PairingHeadphoneStatusCard: View {
 struct PairingHeadphoneStatusCardKorean: View {
     let isConnected: Bool
     var onTap: (() -> Void)?
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private func triggerHaptic() {
         #if os(iOS)
@@ -1185,27 +1218,40 @@ struct PairingHeadphoneStatusCardKorean: View {
 
                 // Content - icon at top, title/subtitle at bottom
                 VStack(alignment: .leading, spacing: 0) {
-                    // Icon at top
-                    Image(isConnected ? "headphones-connected-color" : "not-connected-headphones-color")
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 60, height: 60)
+                    // Icon at top - swaps when the check succeeds (IconSwap), with the text below
+                    ZStack {
+                        Image("not-connected-headphones-color")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 60, height: 60)
+                            .iconSwapShown(!isConnected)
+                        Image("headphones-connected-color")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 60, height: 60)
+                            .iconSwapShown(isConnected)
+                    }
+                    .animation(reduceMotion ? nil : IconSwap.animation, value: isConnected)
 
                     Spacer()
 
-                    // Title - Korean
-                    Text(isConnected ? "헤드폰 연결됨" : "헤드폰이 연결되지 않았어요")
-                        .font(AppTypography.b1Korean)
-                        .tracking(0.48)
-                        .foregroundColor(Color(red: 0.07, green: 0.07, blue: 0.07))
-                        .padding(.bottom, 6)
+                    // Title - Korean; text-swaps with the icon
+                    SwappingText(isConnected ? "헤드폰 연결됨" : "헤드폰이 연결되지 않았어요") {
+                        Text($0)
+                            .font(AppTypography.b1Korean)
+                            .tracking(0.48)
+                            .foregroundColor(Color(red: 0.07, green: 0.07, blue: 0.07))
+                    }
+                    .padding(.bottom, 6)
 
                     // Subtitle - Korean
-                    Text(isConnected ? "준비 완료!" : "여기를 눌러 연결하세요")
-                        .font(AppTypography.b3Korean)
-                        .lineSpacing(21 - 14)  // line height 21
-                        .tracking(0.33)
-                        .foregroundColor(Color(red: 0.07, green: 0.07, blue: 0.07).opacity(0.7))
+                    SwappingText(isConnected ? "준비 완료!" : "여기를 눌러 연결하세요") {
+                        Text($0)
+                            .font(AppTypography.b3Korean)
+                            .lineSpacing(21 - 14)  // line height 21
+                            .tracking(0.33)
+                            .foregroundColor(Color(red: 0.07, green: 0.07, blue: 0.07).opacity(0.7))
+                    }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .padding(.top, 16)
@@ -1899,11 +1945,12 @@ struct ManualPairingScreen: View {
                     .opacity(0.01)
                 )
                 .contentShape(Rectangle())
-                .onTapGesture {
+                // Simultaneous, so each box's press effect doesn't swallow the tap
+                .simultaneousGesture(TapGesture().onEnded {
                     // CRITICAL: Must call becomeFirstResponder explicitly!
                     isCodeFieldFocused = true
                     UIKitTextField.focus()
-                }
+                })
 
                 // Status message (inside the VStack so it scrolls with code boxes)
                 statusMessageView
@@ -2235,6 +2282,11 @@ struct CodeDigitBox: View {
     @State private var cursorOpacity: Double = 1.0
     @State private var digitOffset: CGFloat = 20
     @State private var digitOpacity: Double = 0
+    @State private var isPressed = false
+
+    /// The home language cards' selected stroke (2pt, AppColors.selectedStrokeGradient), faded in
+    /// rather than drawn, with no glow
+    private var showsStroke: Bool { (hasContent || isFocused) && !isError }
 
     var body: some View {
         ZStack {
@@ -2268,22 +2320,31 @@ struct CodeDigitBox: View {
             .frame(width: 48, height: 61)
             .clipShape(RoundedRectangle(cornerRadius: 6))
 
-            // Orange stroke - shows on filled boxes OR focused box, but NOT in error state
-            if (hasContent || isFocused) && !isError {
-                RoundedRectangle(cornerRadius: AppStyle.smallCornerRadius)
-                    .stroke(AppColors.claudeOrange, lineWidth: 2)
-            }
+            // A 12% white layer while pressed
+            RoundedRectangle(cornerRadius: AppStyle.smallCornerRadius)
+                .fill(Color.white.opacity(0.12))
+                .opacity(isPressed ? 1 : 0)
+
+            // Selected stroke - on filled boxes and the focused box, not in the error state; fades in over 300ms
+            RoundedRectangle(cornerRadius: AppStyle.smallCornerRadius)
+                .stroke(
+                    LinearGradient(gradient: AppColors.selectedStrokeGradient, startPoint: .topLeading, endPoint: .bottomTrailing),
+                    lineWidth: 2
+                )
+                .opacity(showsStroke ? 1 : 0)
+                .animation(.easeInOut(duration: 0.3), value: showsStroke)
         }
         .frame(width: 52, height: 65)
-        // Liquid Glass, like iOS's own text entry fields (Messages' compose field)
-        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: AppStyle.smallCornerRadius))
+        // Liquid Glass, like iOS's own text entry fields (Messages' compose field); not interactive,
+        // so the press is ours (white layer and a springy grow) with no system glow
+        .glassEffect(.regular, in: .rect(cornerRadius: AppStyle.smallCornerRadius))
         // Error glow (conditional)
         .shadow(color: isError ? AppColors.errorRed.opacity(0.55) : Color.clear, radius: 6, x: 0, y: 0)
         .shadow(color: isError ? AppColors.errorRed.opacity(0.35) : Color.clear, radius: 12, x: 0, y: 0)
-        // Apply selected shadow only when focused and not in error
-        .if(isFocused && !isError) { view in
-            view.selectedCardShadow()
-        }
+        // Pressed: grows 14% on a bouncy spring, and springs back on release
+        .scaleEffect(isPressed ? 1.14 : 1)
+        .animation(.spring(duration: 0.35, bounce: 0.45), value: isPressed)
+        .pressEvents(onPress: { if !isPressed { isPressed = true } }, onRelease: { isPressed = false })
         .animation(.easeInOut(duration: 0.2), value: isError)
         .animation(.easeInOut(duration: 0.3), value: isAnimatingOut)
         .onChange(of: digit) { oldValue, newValue in
@@ -2915,6 +2976,18 @@ struct LiveTranslationScreen: View {
         return .idle                                              // waiting / other person talking
     }
 
+    /// Who's talking, for the voice glow, the partner's edge light and the orb's pulse
+    private var voiceActivity: VoiceActivity {
+        VoiceActivity.resolve(
+            micLevel: effectiveAudioLevel,
+            iAmSpeaking: effectiveIsSpeaking,
+            micRunning: isSessionActive || showDebugMenu,
+            myCaptionLive: conversation.liveCaptions[.me] != nil,
+            partnerCaptionLive: conversation.liveCaptions[.partner] != nil,
+            partnerAudioPlaying: audioPlayback.isOutputActive
+        )
+    }
+
     /// Intensity the orb animates with (0...1). Debug slider when overriding, else live mic level.
     private var effectiveOrbLevel: CGFloat {
         #if DEBUG
@@ -2930,6 +3003,9 @@ struct LiveTranslationScreen: View {
             AppColors.background
                 .ignoresSafeArea()
 
+            // Who's talking: my voice lights the bottom, the partner's lights the bottom edges (VoiceGlow)
+            LiveVoiceGlow(activity: voiceActivity)
+
             // Bubble - centered in screen
             VStack(spacing: 24) {
                 // Animated bubble with extra space for glow effects
@@ -2941,6 +3017,8 @@ struct LiveTranslationScreen: View {
                     audioLevel: effectiveOrbLevel
                 )
                 .frame(width: 400, height: 400)  // Larger container to prevent glow clipping
+                // Classic looks grow with my voice and rest while the partner talks (Siri glass reacts on its own)
+                .voicePulse(useSiriGlass ? 0 : voiceActivity.myLevel, speechLike: voiceActivity.mySpeechLike)
             }
 
             // Language Selector - 32px below dynamic island, then both sides of the conversation
@@ -2950,9 +3028,9 @@ struct LiveTranslationScreen: View {
                     .padding(.top, liveLayout.languagesTop)
                 ConversationChatView(turns: conversation.turns, isKorean: isKorean)
             }
-            // Newest bubble 16pt above the mic button (micBottom up from the screen's bottom edge,
-            // 80pt tall); the chat's own bottom padding holds its shadow
-            .padding(.bottom, liveLayout.micBottom + 80 + 16 - ConversationChatView.bottomShadowRoom)
+            // Newest bubble micGap above the mic button (micBottom up from the screen's bottom edge,
+            // 80pt tall; ChatLayoutTuning); the chat's own bottom padding holds its shadow
+            .padding(.bottom, liveLayout.micBottom + 80 + ChatLayoutTuning.shared.micGap - ConversationChatView.bottomShadowRoom)
             .ignoresSafeArea(edges: .bottom)
 
             // Instruction text - centered both vertically and horizontally
@@ -3060,6 +3138,9 @@ struct LiveTranslationScreen: View {
                         .padding(.bottom, 100)
                 }
             }
+
+            // Chat bubble radius, padding, gaps and spring (speech-bubble button, bottom left)
+            ChatLayoutPanel()
             #endif
         }
         .onAppear {
@@ -3381,6 +3462,12 @@ struct LiveTranslationScreen: View {
 
                         // Where the language row and the mic (with the menu cards) sit
                         LiveLayoutDebugSection()
+
+                        Divider()
+                            .background(Color.white.opacity(0.2))
+
+                        // Voice glow and the partner's edge light: preview and strength
+                        VoiceGlowDebugSection()
 
                         Divider()
                             .background(Color.white.opacity(0.2))
@@ -3831,14 +3918,13 @@ struct PairingScreenKorean: View {
 
     var body: some View {
         ZStack {
-            // Content (background and gradient provided by parent), placed like the home
-            // screen (HomeLayoutTuning): the title at its title top with the loading dots just under
-            // it, the subtitle home's title-body gap under the dots (less the lift every page after
-            // home gets), the card at its Card Y and card height
+            // Content (background and gradient provided by parent), placed by
+            // PartnerSearchLayoutTuning: the title at home's title top, the loading dots 12pt under it,
+            // the subtitle 20pt under the dots, the card at home's Card Y and card height
             ZStack(alignment: .topLeading) {
                 VStack(alignment: .leading, spacing: 0) {
                     // Title
-                    Text("파트너를 찾는 중...")
+                    Text("파트너를 찾는 중.")
                         .font(AppTypography.h2Korean)
                         .lineSpacing(38 - 28)
                         .tracking(0.672)
@@ -3846,17 +3932,17 @@ struct PairingScreenKorean: View {
 
                     // Loading dots
                     BouncingDots()
-                        .padding(.top, 6)
+                        .padding(.top, PartnerSearchLayoutTuning.shared.titleDotsGap)
 
                     // Subtitle
                     Text("같은 WiFi에 연결해 주세요.\n헤드폰도 준비해 주세요.")
                         .font(AppTypography.b2Korean)
                         .foregroundColor(AppColors.primaryText)
-                        .lineSpacing(22 - 17)
+                        .lineSpacing(PartnerSearchLayoutTuning.shared.bodyLineSpacing)
                         .tracking(0.37)
-                        .padding(.top, HomeLayoutTuning.shared.titleBodySpacing - HomeLayoutTuning.bodyLiftAfterHome)
+                        .padding(.top, PartnerSearchLayoutTuning.shared.dotsBodyGap)
                 }
-                .padding(.top, HomeLayoutTuning.shared.textTop)
+                .padding(.top, PartnerSearchLayoutTuning.shared.titleTop)
 
                 // Headphone status card
                 PairingHeadphoneStatusCardKorean(
@@ -3865,7 +3951,7 @@ struct PairingScreenKorean: View {
                         openBluetoothSettings()
                     }
                 )
-                .padding(.top, HomeLayoutTuning.shared.cardTop)
+                .padding(.top, PartnerSearchLayoutTuning.shared.cardTop)
 
                 // Manual pairing button - at the bottom
                 VStack(alignment: .leading, spacing: 0) {
@@ -3876,11 +3962,15 @@ struct PairingScreenKorean: View {
                     }) {
                         Text("파트너를 찾을 수 없나요?")
                             .font(AppTypography.b2Korean)
-                            .foregroundColor(AppColors.claudeOrange)
+                            .foregroundColor(AppColors.secondaryText)
                             .underline()
+                            // Rolls in letter by letter, left to right, once the search has run 20s
+                            .staggeredReveal(delay: 20)
                     }
-                    .padding(.bottom, 40)
+                    .padding(.bottom, 60)
                 }
+                // 60pt above the screen's bottom edge
+                .ignoresSafeArea(edges: .bottom)
             }
             .padding(.horizontal, 20)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -3899,14 +3989,12 @@ struct PairingScreenKorean: View {
                 Spacer()
             }
 
-            // DEBUG: Explicit controls panel at bottom
+            // DEBUG: Explicit controls panel at bottom (folds into a ladybug), and the layout panel
             #if DEBUG
-            VStack {
-                Spacer()
+            CollapsibleDebugControls {
                 debugControlsPanelKorean
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 40)
             }
+            PartnerSearchLayoutPanel()
             #endif
         }
         .onAppear {
@@ -4729,10 +4817,11 @@ struct ManualPairingScreenKorean: View {
                     .opacity(0.01)
                 )
                 .contentShape(Rectangle())
-                .onTapGesture {
+                // Simultaneous, so each box's press effect doesn't swallow the tap
+                .simultaneousGesture(TapGesture().onEnded {
                     isCodeFieldFocused = true
                     UIKitTextField.focus()
-                }
+                })
 
                 // Status message (inside the VStack so it scrolls with code boxes)
                 statusMessageViewKorean

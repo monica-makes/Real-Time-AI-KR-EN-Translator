@@ -1328,7 +1328,7 @@ struct LookingForPartnerScreen: View {
             // Content
             VStack(alignment: .leading, spacing: 0) {
                 // Title
-                Text("Looking for your partner...")
+                Text("Looking for your partner.")
                     .font(AppTypography.h2)
                     .lineSpacing(39 - 28)
                     .tracking(0.672)
@@ -1434,7 +1434,8 @@ struct BouncingDots: View {
 
     private let dotSize: CGFloat = 10
     private let bounceHeight: CGFloat = 6
-    private let dotSpacing: CGFloat = 12
+    /// Tunable from the partner search screen's layout panel (PartnerSearchLayoutTuning)
+    private var dotSpacing: CGFloat { PartnerSearchLayoutTuning.shared.dotSpacing }
     private let staggerDelay: Double = 0.15
     private let pauseDuration: Double = 0.5
 
@@ -1517,22 +1518,9 @@ struct LoaderDot: View {
                 )
                 .frame(width: dotSize, height: dotSize)
 
-            // Inner shadow stroke (bottom-right edge depth)
-            Circle()
-                .strokeBorder(
-                    LinearGradient(
-                        stops: [
-                            .init(color: Color.clear, location: 0.5),
-                            .init(color: shadowTint.opacity(0.08), location: 0.7),
-                            .init(color: shadowTint.opacity(0.12), location: 1.0)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 1
-                )
-                .frame(width: dotSize, height: dotSize)
         }
+        // 10% see-through and no inner shadow, so the dots read softer
+        .opacity(0.9)
     }
 }
 
