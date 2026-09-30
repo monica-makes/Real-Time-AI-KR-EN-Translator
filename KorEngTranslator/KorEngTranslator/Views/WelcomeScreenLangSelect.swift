@@ -787,7 +787,9 @@ struct EnglishSelectedScreen: View {
             // Selection screen
             if currentScreen == .selection {
                 ZStack {
-                    // Heading and body - at the home screen's title and body tops (HomeLayoutTuning)
+                    // Heading and body - spaced like the home screen (HomeLayoutTuning): the heading's
+                    // bottom home's title-body gap above home's body top, and the body at that top,
+                    // lifted toward the heading like every page after home
                     Text("Let's get you connected.")
                         .font(AppTypography.h2)
                         .lineSpacing(39 - 28)  // line height 39, font size 28
@@ -795,7 +797,7 @@ struct EnglishSelectedScreen: View {
                         .foregroundColor(AppColors.primaryText)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 20)
-                        .padding(.top, HomeLayoutTuning.shared.textTop)
+                        .frame(height: HomeLayoutTuning.shared.bodyTop - HomeLayoutTuning.shared.titleBodySpacing, alignment: .bottom)
                         .frame(maxHeight: .infinity, alignment: .top)
 
                     Text("Choose one, and your partner will pick\nthe other.")
@@ -805,7 +807,7 @@ struct EnglishSelectedScreen: View {
                         .tracking(0.37)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 20)
-                        .padding(.top, HomeLayoutTuning.shared.bodyTop)
+                        .padding(.top, HomeLayoutTuning.shared.bodyTop - HomeLayoutTuning.bodyLiftAfterHome)
                         .frame(maxHeight: .infinity, alignment: .top)
 
                     // Get started cards - same position as page 1
@@ -857,7 +859,7 @@ struct EnglishSelectedScreen: View {
                             Spacer()
                         }
                         .padding(.leading, 20)
-                        .padding(.top, 40)
+                        .padding(.top, LiveLayoutTuning.shared.languagesTop)  // level with the live screen's language row
 
                         Spacer()
                     }
@@ -982,7 +984,9 @@ struct KoreanSelectedScreen: View {
             // Selection screen
             if currentScreen == .selection {
                 ZStack {
-                    // Heading and body - at the home screen's title and body tops (HomeLayoutTuning, Korean)
+                    // Heading and body - spaced like the home screen (HomeLayoutTuning, Korean): the
+                    // heading's bottom home's title-body gap above home's body top, and the body at
+                    // that top, lifted toward the heading like every page after home
                     Text("연결해 드릴게요.")
                         .font(AppTypography.h2Korean)
                         .lineSpacing(38 - 28)
@@ -990,7 +994,7 @@ struct KoreanSelectedScreen: View {
                         .foregroundColor(AppColors.primaryText)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 20)
-                        .padding(.top, HomeLayoutTuning.shared.textTop)
+                        .frame(height: HomeLayoutTuning.shared.bodyTop - HomeLayoutTuning.shared.titleBodySpacing, alignment: .bottom)
                         .frame(maxHeight: .infinity, alignment: .top)
 
                     Text("둘 중 하나를 고르세요. 상대방은 나머지를\n선택하면 돼요.")
@@ -1000,7 +1004,7 @@ struct KoreanSelectedScreen: View {
                         .tracking(0.37)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 20)
-                        .padding(.top, HomeLayoutTuning.shared.bodyTop)
+                        .padding(.top, HomeLayoutTuning.shared.bodyTop - HomeLayoutTuning.bodyLiftAfterHome)
                         .frame(maxHeight: .infinity, alignment: .top)
 
                     // Get started cards - same position as page 1
@@ -1052,7 +1056,7 @@ struct KoreanSelectedScreen: View {
                             Spacer()
                         }
                         .padding(.leading, 20)
-                        .padding(.top, 40)
+                        .padding(.top, LiveLayoutTuning.shared.languagesTop)  // level with the live screen's language row
 
                         Spacer()
                     }
@@ -1366,7 +1370,7 @@ struct LookingForPartnerScreen: View {
                     Spacer()
                 }
                 .padding(.leading, 20)
-                .padding(.top, 40)
+                .padding(.top, LiveLayoutTuning.shared.languagesTop)  // level with the live screen's language row
 
                 Spacer()
             }

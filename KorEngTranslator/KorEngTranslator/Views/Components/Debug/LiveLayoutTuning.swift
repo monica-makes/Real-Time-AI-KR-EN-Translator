@@ -3,14 +3,15 @@ import Observation
 
 /// Where the live translation screen's frame sits: the language row ("They speak" / "I speak")
 /// under the Dynamic Island, and the mic control near the bottom. The Voice & Honorifics cards
-/// sit `menuBelowMic` under the mic's resting spot, so they move with it. Debug builds tune both
-/// from the screen's debug panel (LAYOUT); values last until the app relaunches.
+/// sit `menuBelowMic` under the mic's resting spot, so they move with it. The setup screens' back
+/// buttons sit at the language row's top too. Debug builds tune both from the screen's debug panel
+/// (LAYOUT); values last until the app relaunches.
 @Observable
 final class LiveLayoutTuning {
     static let shared = LiveLayoutTuning()
 
-    static let defaultLanguagesTop: CGFloat = 32   // language row top, below the safe-area top
-    static let defaultMicBottom: CGFloat = 70      // mic control bottom, above the screen's bottom edge
+    static let defaultLanguagesTop: CGFloat = 8    // language row top, below the safe-area top
+    static let defaultMicBottom: CGFloat = 32      // mic control bottom, above the screen's bottom edge (Mic Y 700 on iPhone 17)
     /// The cards' bottom sits this much lower than the mic's resting bottom
     static let menuBelowMic: CGFloat = 8
     /// The lowest box (the cards) stays at least this far above the screen's bottom edge

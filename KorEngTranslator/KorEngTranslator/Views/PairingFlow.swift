@@ -655,8 +655,9 @@ struct PairingScreen: View {
     var body: some View {
         ZStack {
             // Content (background and gradient provided by parent WelcomeScreenLangSelect), placed like the home
-            // screen (HomeLayoutTuning): the title at its title top with the loading dots centered
-            // under it, the subtitle at its body top, the card at its Card Y and card height
+            // screen (HomeLayoutTuning): the title at its title top with the loading dots just under
+            // it, the subtitle home's title-body gap under the dots (less the lift every page after
+            // home gets), the card at its Card Y and card height
             ZStack(alignment: .topLeading) {
                 VStack(alignment: .leading, spacing: 0) {
                     // Title
@@ -666,21 +667,19 @@ struct PairingScreen: View {
                         .tracking(0.672)
                         .foregroundColor(AppColors.primaryText)
 
-                    // Loading dots - centered between the title and the subtitle
-                    Spacer(minLength: 0)
+                    // Loading dots
                     BouncingDots()
-                    Spacer(minLength: 0)
-                }
-                .frame(height: HomeLayoutTuning.shared.bodyTop - HomeLayoutTuning.shared.textTop, alignment: .top)
-                .padding(.top, HomeLayoutTuning.shared.textTop)
+                        .padding(.top, 6)
 
-                // Subtitle
-                Text("You'll both need the same WiFi\nand a pair of headphones.")
-                    .font(AppTypography.b2)
-                    .foregroundColor(AppColors.primaryText)
-                    .lineSpacing(22 - 17)
-                    .tracking(0.37)
-                    .padding(.top, HomeLayoutTuning.shared.bodyTop)
+                    // Subtitle
+                    Text("You'll both need the same WiFi\nand a pair of headphones.")
+                        .font(AppTypography.b2)
+                        .foregroundColor(AppColors.primaryText)
+                        .lineSpacing(22 - 17)
+                        .tracking(0.37)
+                        .padding(.top, HomeLayoutTuning.shared.titleBodySpacing - HomeLayoutTuning.bodyLiftAfterHome)
+                }
+                .padding(.top, HomeLayoutTuning.shared.textTop)
 
                 // Headphone status card
                 PairingHeadphoneStatusCard(
@@ -704,7 +703,7 @@ struct PairingScreen: View {
                     Spacer()
                 }
                 .padding(.leading, 20)
-                .padding(.top, 40)
+                .padding(.top, LiveLayoutTuning.shared.languagesTop)  // level with the live screen's language row
                 Spacer()
             }
 
@@ -1467,7 +1466,7 @@ struct ManualPairingScreen: View {
                                     .foregroundColor(AppColors.primaryText)
                                     .lineSpacing(22 - 17)
                                     .tracking(0.37)
-                                    .padding(.top, effectiveMode == .create ? pairingLayout.createTitleBodyGap : pairingLayout.joinTitleBodyGap)
+                                    .padding(.top, PairingLayoutTuning.titleBodyGap - HomeLayoutTuning.bodyLiftAfterHome)
 
                                 // Mode-specific content
                                 if effectiveMode == .create {
@@ -1590,7 +1589,7 @@ struct ManualPairingScreen: View {
                     Spacer()
                 }
                 .padding(.leading, 20)
-                .padding(.top, 40)
+                .padding(.top, LiveLayoutTuning.shared.languagesTop)  // level with the live screen's language row
                 Spacer()
             }
             #if DEBUG
@@ -1601,7 +1600,7 @@ struct ManualPairingScreen: View {
             // DEBUG: layout panel (ruler, bottom left) - the whole unit's top, then each gap
             #if DEBUG
             if !showPartnerJoinView {
-                PairingLayoutDebugPanel(isCreate: effectiveMode == .create, pageWidth: geometry.size.width)
+                PairingLayoutDebugPanel(isCreate: effectiveMode == .create)
             }
             #endif
 
@@ -1705,10 +1704,10 @@ struct ManualPairingScreen: View {
             Text("Show this QR code:")
                 .font(AppTypography.h3)
                 .foregroundColor(AppColors.primaryText)
-                .padding(.top, pairingLayout.qrLabelGap)
+                .padding(.top, PairingLayoutTuning.labelGap + HomeLayoutTuning.bodyLiftAfterHome)  // stays put as the subtitle lifts
 
-            // QR Code - 10pt below label, 20% smaller than full width and left-aligned like the
-            // code box below (uses cached image to prevent flickering)
+            // QR Code - 20% smaller than full width and left-aligned like the code box below
+            // (uses cached image to prevent flickering)
             if let qrImage = cachedQRImage {
                 Image(uiImage: qrImage)
                     .resizable()
@@ -1722,16 +1721,16 @@ struct ManualPairingScreen: View {
                     )
                     .codeBoxShadow()
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.top, pairingLayout.qrGap)
+                    .padding(.top, PairingLayoutTuning.squareGap)
             }
 
-            // Code Section Label - lined up with join mode's code-entry label
+            // Code Section Label
             Text("Or share this code:")
                 .font(AppTypography.b2)
                 .foregroundColor(AppColors.primaryText)
-                .padding(.top, pairingLayout.currentShareGap(pageWidth: pageWidth))
+                .padding(.top, pairingLayout.shareGap)
 
-            // Code Display Card - 16pt below label
+            // Code Display Card
             HStack(alignment: .center) {
                 // Code with spaces between digits
                 Text(spacedDisplayCode)
@@ -1750,10 +1749,10 @@ struct ManualPairingScreen: View {
             // As wide as the QR box above: its QR ((width - 72) * 0.8) plus 16pt padding a side
             .containerRelativeFrame(.horizontal) { width, _ in (width - 72) * 0.8 + 32 }
             .background(AppColors.cardFill.opacity(0.95))
-            .cornerRadius(AppStyle.cornerRadius)
+            .cornerRadius(AppStyle.smallCornerRadius)
             .codeBoxShadow()
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.top, pairingLayout.shareCodeGap)
+            .padding(.top, PairingLayoutTuning.codeGap)
         }
         .onAppear {
             // Generate QR code once and cache it
@@ -1804,7 +1803,7 @@ struct ManualPairingScreen: View {
             Text(scanQRText)
                 .font(h3Font)
                 .foregroundColor(AppColors.primaryText)
-                .padding(.top, pairingLayout.scanLabelGap)
+                .padding(.top, PairingLayoutTuning.labelGap + HomeLayoutTuning.bodyLiftAfterHome)  // stays put as the subtitle lifts
 
             // Camera container (semi-transparent to show surroundings, full opacity when code entry focused)
             ZStack {
@@ -1851,7 +1850,7 @@ struct ManualPairingScreen: View {
                 #endif
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.top, pairingLayout.cameraGap)
+            .padding(.top, PairingLayoutTuning.squareGap)
             .animation(.easeInOut(duration: 0.25), value: backgroundElementsOpacity)
             .onTapGesture {
                 // Dismiss keyboard when tapping camera area - scroll will revert automatically
@@ -1861,7 +1860,7 @@ struct ManualPairingScreen: View {
                 }
             }
 
-            // Manual Code Entry Section - create mode's share code lines up with this label
+            // Manual Code Entry Section
             Text(manualEntryText)
                 .font(bodyFont)
                 .foregroundColor(AppColors.primaryText)
@@ -1909,7 +1908,7 @@ struct ManualPairingScreen: View {
                 // Status message (inside the VStack so it scrolls with code boxes)
                 statusMessageView
             }
-            .padding(.top, pairingLayout.digitsGap)
+            .padding(.top, PairingLayoutTuning.codeGap)
             .padding(.bottom, 12)
             .id("codeEntryField")
 
@@ -2271,13 +2270,13 @@ struct CodeDigitBox: View {
 
             // Orange stroke - shows on filled boxes OR focused box, but NOT in error state
             if (hasContent || isFocused) && !isError {
-                RoundedRectangle(cornerRadius: AppStyle.cornerRadius)
+                RoundedRectangle(cornerRadius: AppStyle.smallCornerRadius)
                     .stroke(AppColors.claudeOrange, lineWidth: 2)
             }
         }
         .frame(width: 52, height: 65)
         // Liquid Glass, like iOS's own text entry fields (Messages' compose field)
-        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: AppStyle.cornerRadius))
+        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: AppStyle.smallCornerRadius))
         // Error glow (conditional)
         .shadow(color: isError ? AppColors.errorRed.opacity(0.55) : Color.clear, radius: 6, x: 0, y: 0)
         .shadow(color: isError ? AppColors.errorRed.opacity(0.35) : Color.clear, radius: 12, x: 0, y: 0)
@@ -2649,13 +2648,13 @@ struct SetupSuccessScreen: View {
                     .foregroundColor(AppColors.primaryText)
                     .padding(.top, 20)
 
-                // Subtitle - 8px below title (same as other screens)
+                // Subtitle - 12px below title
                 Text("Starting your translation session now.")
                     .font(AppTypography.b2)
                     .foregroundColor(AppColors.primaryText)
                     .lineSpacing(22 - 17)
                     .tracking(0.37)
-                    .padding(.top, 8)
+                    .padding(.top, 12)
 
                 Spacer()
             }
@@ -2674,7 +2673,7 @@ struct SetupSuccessScreen: View {
                     Spacer()
                 }
                 .padding(.leading, 20)
-                .padding(.top, 40)
+                .padding(.top, LiveLayoutTuning.shared.languagesTop)  // level with the live screen's language row
                 Spacer()
             }
             #endif
@@ -2733,21 +2732,21 @@ struct SuccessCheckBadge: View {
             // Outer pulsing halo - sage green
             Circle()
                 .fill(AppColors.lightGreen.opacity(0.6))
-                .frame(width: 48, height: 48)
+                .frame(width: 52, height: 52)
                 .scaleEffect(haloScale)
 
             // Inner circle - success green
             Circle()
                 .fill(AppColors.successGreen)
-                .frame(width: 36, height: 36)
+                .frame(width: 40, height: 40)
 
             // Drawn checkmark - white
             CheckmarkShape()
                 .trim(from: 0, to: checkProgress)
                 .stroke(AppColors.whiteIcon, style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
-                .frame(width: 18, height: 18)
+                .frame(width: 20, height: 20)
         }
-        .frame(width: 48, height: 48)
+        .frame(width: 52, height: 52)
         .opacity(appeared ? 1 : 0)
         .rotationEffect(.degrees(appeared ? 0 : 80))
         .blur(radius: appeared ? 0 : 10)
@@ -3365,10 +3364,17 @@ struct LiveTranslationScreen: View {
 
             // Expandable menu (scrolls once it outgrows the safe area, so the ladybug stays put)
             if showDebugMenu {
-                ScrollView(.vertical, showsIndicators: false) {
+                ScrollView(.vertical, showsIndicators: true) {
                     VStack(alignment: .leading, spacing: 12) {
                         // Start over on the welcome screen
                         restartDebugSection
+
+                        Divider()
+                            .background(Color.white.opacity(0.2))
+
+                        // Chat text reveal style, and a scripted conversation to watch it
+                        // (kept near the top so "Play demo chat" shows without scrolling)
+                        ChatDebugSection(conversation: $conversation, iSpeakKorean: isKorean)
 
                         Divider()
                             .background(Color.white.opacity(0.2))
@@ -3387,12 +3393,6 @@ struct LiveTranslationScreen: View {
 
                         // Orb state: idle / listening / responding
                         orbStateDebugSection
-
-                        Divider()
-                            .background(Color.white.opacity(0.2))
-
-                        // Chat text reveal style, and a scripted conversation to watch it
-                        ChatDebugSection(conversation: $conversation, iSpeakKorean: isKorean)
 
                         Divider()
                             .background(Color.white.opacity(0.2))
@@ -3723,9 +3723,9 @@ struct LiveTranslationScreen: View {
             .frame(width: 160, height: 44)
             // A subtler take on the mic menu cards' Liquid Glass: clear glass over the box's own
             // fill, so the box keeps its color and shadow and gains the glass edge
-            .glassEffect(.clear, in: .rect(cornerRadius: AppStyle.cornerRadius))
+            .glassEffect(.clear, in: .rect(cornerRadius: AppStyle.smallCornerRadius))
             .background(
-                RoundedRectangle(cornerRadius: AppStyle.cornerRadius)
+                RoundedRectangle(cornerRadius: AppStyle.smallCornerRadius)
                     .fill(AppColors.languageDisplayBox)
                     .codeBoxShadow()
             )
@@ -3832,8 +3832,9 @@ struct PairingScreenKorean: View {
     var body: some View {
         ZStack {
             // Content (background and gradient provided by parent), placed like the home
-            // screen (HomeLayoutTuning): the title at its title top with the loading dots centered
-            // under it, the subtitle at its body top, the card at its Card Y and card height
+            // screen (HomeLayoutTuning): the title at its title top with the loading dots just under
+            // it, the subtitle home's title-body gap under the dots (less the lift every page after
+            // home gets), the card at its Card Y and card height
             ZStack(alignment: .topLeading) {
                 VStack(alignment: .leading, spacing: 0) {
                     // Title
@@ -3843,21 +3844,19 @@ struct PairingScreenKorean: View {
                         .tracking(0.672)
                         .foregroundColor(AppColors.primaryText)
 
-                    // Loading dots - centered between the title and the subtitle
-                    Spacer(minLength: 0)
+                    // Loading dots
                     BouncingDots()
-                    Spacer(minLength: 0)
-                }
-                .frame(height: HomeLayoutTuning.shared.bodyTop - HomeLayoutTuning.shared.textTop, alignment: .top)
-                .padding(.top, HomeLayoutTuning.shared.textTop)
+                        .padding(.top, 6)
 
-                // Subtitle
-                Text("같은 WiFi에 연결해 주세요.\n헤드폰도 준비해 주세요.")
-                    .font(AppTypography.b2Korean)
-                    .foregroundColor(AppColors.primaryText)
-                    .lineSpacing(22 - 17)
-                    .tracking(0.37)
-                    .padding(.top, HomeLayoutTuning.shared.bodyTop)
+                    // Subtitle
+                    Text("같은 WiFi에 연결해 주세요.\n헤드폰도 준비해 주세요.")
+                        .font(AppTypography.b2Korean)
+                        .foregroundColor(AppColors.primaryText)
+                        .lineSpacing(22 - 17)
+                        .tracking(0.37)
+                        .padding(.top, HomeLayoutTuning.shared.titleBodySpacing - HomeLayoutTuning.bodyLiftAfterHome)
+                }
+                .padding(.top, HomeLayoutTuning.shared.textTop)
 
                 // Headphone status card
                 PairingHeadphoneStatusCardKorean(
@@ -3896,7 +3895,7 @@ struct PairingScreenKorean: View {
                     Spacer()
                 }
                 .padding(.leading, 20)
-                .padding(.top, 40)
+                .padding(.top, LiveLayoutTuning.shared.languagesTop)  // level with the live screen's language row
                 Spacer()
             }
 
@@ -4246,7 +4245,7 @@ struct ManualPairingScreenKorean: View {
                                     .foregroundColor(AppColors.primaryText)
                                     .lineSpacing(22 - 17)
                                     .tracking(0.37)
-                                    .padding(.top, effectiveMode == .create ? pairingLayout.createTitleBodyGap : pairingLayout.joinTitleBodyGap)
+                                    .padding(.top, PairingLayoutTuning.titleBodyGap - HomeLayoutTuning.bodyLiftAfterHome)
 
                                 // Mode-specific content
                                 if effectiveMode == .create {
@@ -4355,7 +4354,7 @@ struct ManualPairingScreenKorean: View {
                     Spacer()
                 }
                 .padding(.leading, 20)
-                .padding(.top, 40)
+                .padding(.top, LiveLayoutTuning.shared.languagesTop)  // level with the live screen's language row
                 Spacer()
             }
             #if DEBUG
@@ -4366,7 +4365,7 @@ struct ManualPairingScreenKorean: View {
             // DEBUG: layout panel (ruler, bottom left) - the whole unit's top, then each gap
             #if DEBUG
             if !showPartnerJoinView {
-                PairingLayoutDebugPanel(isCreate: effectiveMode == .create, pageWidth: geometry.size.width)
+                PairingLayoutDebugPanel(isCreate: effectiveMode == .create)
             }
             #endif
 
@@ -4573,7 +4572,7 @@ struct ManualPairingScreenKorean: View {
             Text("QR 코드를 보여주세요:")
                 .font(AppTypography.h3Korean)
                 .foregroundColor(AppColors.primaryText)
-                .padding(.top, pairingLayout.qrLabelGap)
+                .padding(.top, PairingLayoutTuning.labelGap + HomeLayoutTuning.bodyLiftAfterHome)  // stays put as the subtitle lifts
 
             // QR Code - 20% smaller than full width, left-aligned like the code box below (cached to prevent flickering)
             if let qrImage = cachedQRImage {
@@ -4589,14 +4588,13 @@ struct ManualPairingScreenKorean: View {
                     )
                     .codeBoxShadow()
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.top, pairingLayout.qrGap)
+                    .padding(.top, PairingLayoutTuning.squareGap)
             }
 
-            // Lined up with join mode's code-entry label
             Text("또는 이 코드를 공유하세요:")
                 .font(AppTypography.b2Korean)
                 .foregroundColor(AppColors.primaryText)
-                .padding(.top, pairingLayout.currentShareGap(pageWidth: pageWidth))
+                .padding(.top, pairingLayout.shareGap)
 
             HStack(alignment: .center) {
                 Text(spacedDisplayCode)
@@ -4612,10 +4610,10 @@ struct ManualPairingScreenKorean: View {
             // As wide as the QR box above: its QR ((width - 72) * 0.8) plus 16pt padding a side
             .containerRelativeFrame(.horizontal) { width, _ in (width - 72) * 0.8 + 32 }
             .background(AppColors.cardFill.opacity(0.95))
-            .cornerRadius(AppStyle.cornerRadius)
+            .cornerRadius(AppStyle.smallCornerRadius)
             .codeBoxShadow()
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.top, pairingLayout.shareCodeGap)
+            .padding(.top, PairingLayoutTuning.codeGap)
         }
         .onAppear {
             // Generate QR code once and cache it
@@ -4636,7 +4634,7 @@ struct ManualPairingScreenKorean: View {
             Text(scanQRText)
                 .font(h3Font)
                 .foregroundColor(AppColors.primaryText)
-                .padding(.top, pairingLayout.scanLabelGap)
+                .padding(.top, PairingLayoutTuning.labelGap + HomeLayoutTuning.bodyLiftAfterHome)  // stays put as the subtitle lifts
 
             // Camera container (semi-transparent to show surroundings, full opacity when code entry focused)
             ZStack {
@@ -4683,7 +4681,7 @@ struct ManualPairingScreenKorean: View {
                 #endif
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.top, pairingLayout.cameraGap)
+            .padding(.top, PairingLayoutTuning.squareGap)
             .animation(.easeInOut(duration: 0.25), value: backgroundElementsOpacity)
             .onTapGesture {
                 // Dismiss keyboard when tapping camera area - scroll will revert automatically
@@ -4693,7 +4691,7 @@ struct ManualPairingScreenKorean: View {
                 }
             }
 
-            // Manual Code Entry Section - create mode's share code lines up with this label
+            // Manual Code Entry Section
             Text(manualEntryText)
                 .font(bodyFont)
                 .foregroundColor(AppColors.primaryText)
@@ -4739,7 +4737,7 @@ struct ManualPairingScreenKorean: View {
                 // Status message (inside the VStack so it scrolls with code boxes)
                 statusMessageViewKorean
             }
-            .padding(.top, pairingLayout.digitsGap)
+            .padding(.top, PairingLayoutTuning.codeGap)
             .padding(.bottom, 12)  // Extra padding to push content higher when scrolled
             .id("codeEntryFieldKorean")
 
@@ -4933,7 +4931,7 @@ struct SetupSuccessScreenKorean: View {
                     .foregroundColor(AppColors.primaryText)
                     .lineSpacing(22 - 17)
                     .tracking(0.37)
-                    .padding(.top, 8)
+                    .padding(.top, 12)
 
                 Spacer()
             }
@@ -4951,7 +4949,7 @@ struct SetupSuccessScreenKorean: View {
                     Spacer()
                 }
                 .padding(.leading, 20)
-                .padding(.top, 40)
+                .padding(.top, LiveLayoutTuning.shared.languagesTop)  // level with the live screen's language row
                 Spacer()
             }
             #endif

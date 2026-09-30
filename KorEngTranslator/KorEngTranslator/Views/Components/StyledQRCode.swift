@@ -13,15 +13,15 @@ enum StyledQRCode {
     struct Style {
         /// Dot diameter as a share of a module - large enough for cameras to read reliably
         var dotScale: CGFloat = 0.78
-        /// Corner markers: a thin ring with a centre dot. Closest to the reference design that
-        /// still scans reliably - Apple's reader needs the dot around 3 modules (the reference's
-        /// ~1.5-module dot and 5.4-module ring decoded 0 of 30 in testing)
+        /// Corner markers: a thin ring with a centre dot. The dot is the smallest that still scans:
+        /// with the 0.44 ring, Apple's reader decoded 60/60 at 2.6 in every test condition, but only
+        /// 22/60 camera-like shots at 2.4 and 0/60 sharp ones at 2.1 (it read those only when blurred)
         var finderDiameter: CGFloat = 6.6
-        var finderRingWidth: CGFloat = 0.55
-        var finderDotDiameter: CGFloat = 3.0
-        /// Logo width, and the clear space kept around it
+        var finderRingWidth: CGFloat = 0.44
+        var finderDotDiameter: CGFloat = 2.6
+        /// Logo width, and the clear space kept around it (1.5 clears one more ring of dots than 0.6)
         var logoWidth: CGFloat = 3.6
-        var logoMargin: CGFloat = 0.6
+        var logoMargin: CGFloat = 1.5
     }
 
     /// Pairing QR payload. The Join scanner keeps only the digits, so this still yields the
