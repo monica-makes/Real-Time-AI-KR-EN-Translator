@@ -701,10 +701,10 @@ struct MicButton: View {
             GooeySecondaryButton(
                 goo: goo.more,
                 offset: -secondaryButtonOffset,
-                iconName: "more",
-                iconSize: CGSize(width: 40, height: 40),
-                // More turns into an X while the menu is open; Phosphor's X at 30pt draws Figma's 18pt cross
-                alternateIcon: (name: "x", size: CGSize(width: 30, height: 30)),
+                iconName: "ellipsis",
+                iconSize: 22,
+                // More turns into an X while the menu is open
+                alternateIcon: (name: "xmark", size: 18),
                 showsAlternate: isMenuOpen,
                 accessibilityLabel: isMenuOpen ? "Close voice and honorific settings" : "Voice and honorific settings",
                 action: { onMoreTapped?() }
@@ -712,8 +712,8 @@ struct MicButton: View {
             GooeySecondaryButton(
                 goo: goo.stop,
                 offset: secondaryButtonOffset,
-                iconName: "stop",
-                iconSize: CGSize(width: 36, height: 36),
+                iconName: "stop.fill",
+                iconSize: 18,
                 accessibilityLabel: "End session",
                 action: { onStopTapped?() }
             )
@@ -761,7 +761,8 @@ struct MicButton: View {
                 }
                 .animation(reduceMotion ? nil : IconSwap.animation, value: primaryIcon)
             }
-            .buttonStyle(MicPressStyle())
+            // iOS's press for an interactive glass circle: grows 16pt, 40% white, bounces back
+            .buttonStyle(IOSPressStyle(.control, in: Circle(), highlight: 0.4))
             .accessibilityLabel(primaryIcon == .mute ? "Pause" : primaryIcon == .play ? "Resume" : "Start")
         }
     }
@@ -775,18 +776,16 @@ struct MicButton: View {
                 .foregroundColor(AppColors.whiteIcon)
                 .frame(width: 44, height: 44)
         case .mute:
-            // Phosphor microphone-slash-fill, the same family as Play
-            Image("microphone-slash-fill")
-                .renderingMode(.template)
-                .resizable()
-                .frame(width: 44, height: 44)
+            // SF Symbols, at the resting mic's size, so every state reads the same size
+            Image(systemName: "mic.slash.fill")
+                .font(.system(size: 24))
                 .foregroundColor(Color(hex: "FC757B"))
-        case .play:
-            Image("play")
-                .renderingMode(.template)
-                .resizable()
                 .frame(width: 44, height: 44)
+        case .play:
+            Image(systemName: "play.fill")
+                .font(.system(size: 24))
                 .foregroundColor(AppColors.whiteIcon)
+                .frame(width: 44, height: 44)
         }
     }
 
@@ -1237,8 +1236,9 @@ private struct GooeySecondaryButton: View {
     let goo: GooFrame
     let offset: CGFloat  // resting x offset from the mic's center, negative = left
     let iconName: String
-    let iconSize: CGSize
-    var alternateIcon: (name: String, size: CGSize)? = nil
+    /// SF Symbol and its point size
+    let iconSize: CGFloat
+    var alternateIcon: (name: String, size: CGFloat)? = nil
     var showsAlternate: Bool = false
     let accessibilityLabel: String
     let action: () -> Void
@@ -1288,7 +1288,7 @@ private struct GooeySecondaryButton: View {
                     strokeOpacity: goo.strand.strokeOpacity
                 )
             }
-            .buttonStyle(TapLightenButtonStyle())
+            .buttonStyle(IOSPressStyle(.control, in: Circle()))
             .accessibilityLabel(accessibilityLabel)
             .offset(x: x)
             // Hidden when tucked in, since the mic dims while pressed
@@ -1309,9 +1309,10 @@ private struct GooeySecondaryButton: View {
 
 struct SecondaryRoundButton: View {
     let iconName: String
-    var iconSize: CGSize = CGSize(width: 24, height: 24)
+    /// SF Symbol point size
+    var iconSize: CGFloat = 20
     /// Swapped in (Transitions.dev icon swap) while `showsAlternate` is on, e.g. More to X
-    var alternateIcon: (name: String, size: CGSize)? = nil
+    var alternateIcon: (name: String, size: CGFloat)? = nil
     var showsAlternate: Bool = false
     var strokeOpacity: Double = 1
 
@@ -1340,12 +1341,12 @@ struct SecondaryRoundButton: View {
         .animation(reduceMotion ? nil : IconSwap.animation, value: showsAlternate)
     }
 
-    private func icon(_ name: String, size: CGSize) -> some View {
-        Image(name)
-            .renderingMode(.template)
-            .resizable()
-            .frame(width: size.width, height: size.height)
+    /// An SF Symbol, centered in a 44pt box
+    private func icon(_ name: String, size: CGFloat) -> some View {
+        Image(systemName: name)
+            .font(.system(size: size, weight: .semibold))
             .foregroundColor(AppColors.primaryIcon)
+            .frame(width: 44, height: 44)
     }
 }
 
@@ -1442,30 +1443,5 @@ private struct MicMenuRevealEffect: ViewModifier {
 extension AnyTransition {
     static var micMenuReveal: AnyTransition {
         .modifier(active: MicMenuRevealEffect(isShown: false), identity: MicMenuRevealEffect(isShown: true))
-    }
-}
-
-// MARK: - Mic Press Style
-
-/// The mic's pressed look: lightened like TapLightenButtonStyle, but with a light wash on top instead
-/// of transparency, so More and Stop don't show through the mic while they squeeze out from under it
-private struct MicPressStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .overlay(
-                Circle()
-                    .fill(Color.white.opacity(configuration.isPressed ? 0.4 : 0))
-                    .frame(width: 72, height: 72)
-                    .allowsHitTesting(false)
-            )
-    }
-}
-
-// MARK: - Tap Lighten Button Style
-
-struct TapLightenButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .opacity(configuration.isPressed ? 0.5 : 1.0)
     }
 }

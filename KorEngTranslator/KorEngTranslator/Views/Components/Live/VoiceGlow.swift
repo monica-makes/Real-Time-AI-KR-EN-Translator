@@ -2,11 +2,11 @@ import SwiftUI
 import Observation
 
 // Light that shows who's talking on the live screen, alongside the orb:
-// - My voice: light running along the screen's rounded bottom edges (the bottom 40% of the screen),
-//   after the border-beam library's sunset beam, brightening with my mic level, in the orb's
-//   peach and orange at half saturation and half strength.
-// - The partner's voice: a glow rising from the bottom edge and blooming as they talk, after the
-//   voice-glow library's "mobile" beam, in brighter, fuller oranges.
+// - My voice: a glow rising from the bottom edge and blooming with my mic level, after the
+//   voice-glow library's "mobile" beam, in bright, full oranges.
+// - The partner's voice: light running along the screen's rounded bottom edges (the bottom 40% of
+//   the screen), after the border-beam library's sunset beam, in Claude orange and the orb's
+//   rendered colors.
 // - The orb grows a little with my voice and rests while the partner talks.
 
 /// What the voice effects should show right now
@@ -57,8 +57,8 @@ struct VoiceActivity: Equatable {
 final class VoiceGlowTuning {
     static let shared = VoiceGlowTuning()
 
-    static let defaultMineStrength: CGFloat = 50     // % of the reference beam: half as strong
-    static let defaultTheirsStrength: CGFloat = 100  // %
+    static let defaultMineStrength: CGFloat = 100    // % of my bottom glow
+    static let defaultTheirsStrength: CGFloat = 100  // % of the partner's edge light
     static let defaultOrbPulse: CGFloat = 12         // % the orb grows at full voice
 
     var mineStrength = defaultMineStrength
@@ -89,12 +89,13 @@ struct LiveVoiceGlow: View {
 
     var body: some View {
         ZStack {
-            // The partner: a glow rising from the bottom, flickering like speech
-            BottomVoiceGlow(level: activity.partnerSpeaking ? 0.7 : 0, speechLike: true,
-                            strength: tuning.theirsStrength / 100, palette: .theirs)
-            // Me: light along the bottom edges, with my level
-            EdgeBeam(level: activity.myLevel, strength: tuning.mineStrength / 100, palette: .mine)
-                .animation(.easeInOut(duration: 0.25), value: activity.myLevel)
+            // Me: the orange glow rising from the bottom, with my level
+            BottomVoiceGlow(level: activity.myLevel, speechLike: activity.mySpeechLike,
+                            strength: tuning.mineStrength / 100, palette: .brightOrange)
+            // The partner: light along the bottom edges
+            EdgeBeam(level: activity.partnerSpeaking ? 1 : 0, strength: tuning.theirsStrength / 100,
+                     palette: .rim)
+                .animation(.easeInOut(duration: 0.25), value: activity.partnerSpeaking)
         }
         .ignoresSafeArea()
         .allowsHitTesting(false)
@@ -175,13 +176,14 @@ private struct GlowPalette {
         return colors[i].mixed(with: colors[(i + 1) % colors.count], p - p.rounded(.down)).color
     }
 
-    /// Mine: sampled from the rendered orb, center to rim (hues 22-26°, about half saturation)
-    static let mine = GlowPalette(colors: [
-        GlowRGB(0xFFAB6D), GlowRGB(0xFFB477), GlowRGB(0xFFBA90), GlowRGB(0xFFC6A0)
+    /// The partner's rim: Claude orange for the beams' heads, then the orb's own rendered core,
+    /// middle and halo (hue 22-23°) trailing behind them
+    static let rim = GlowPalette(colors: [
+        GlowRGB(0xE8714E), GlowRGB(0xFDA068), GlowRGB(0xFDB88D), GlowRGB(0xFCD4BD)
     ])
 
-    /// Theirs: the orb's hues (18-26°) at fuller saturation, so they read brighter orange
-    static let theirs = GlowPalette(colors: [
+    /// The orb's hues (18-26°) at fuller saturation, so they read brighter orange: my bottom glow
+    static let brightOrange = GlowPalette(colors: [
         GlowRGB(0xFF9450), GlowRGB(0xFF8B4A), GlowRGB(0xFFA262), GlowRGB(0xFF8F5E)
     ])
 
@@ -367,22 +369,22 @@ private struct EdgeBeam: View {
     /// Seconds for a beam to go once around
     private static let period: TimeInterval = 6
 
-    /// Two bright beams half a turn apart, with gaps, in the palette's colors
+    /// Two beams half a turn apart: each a head in the palette's first color with a tail through
+    /// the next three, fading out, and a soft leading edge
     private var beamStops: [Gradient.Stop] {
-        let orange = palette.rgb(0), coral = palette.rgb(1), amber = palette.rgb(2), red = palette.rgb(3)
-        return [
-            .init(color: orange, location: 0.00),
-            .init(color: coral.opacity(0.7), location: 0.07),
-            .init(color: amber.opacity(0), location: 0.20),
-            .init(color: amber.opacity(0.55), location: 0.30),
-            .init(color: red.opacity(0), location: 0.40),
-            .init(color: orange, location: 0.50),
-            .init(color: coral.opacity(0.7), location: 0.57),
-            .init(color: amber.opacity(0), location: 0.70),
-            .init(color: amber.opacity(0.55), location: 0.80),
-            .init(color: red.opacity(0), location: 0.90),
-            .init(color: orange, location: 1.00)
-        ]
+        let head = palette.rgb(0), trail1 = palette.rgb(1), trail2 = palette.rgb(2), trail3 = palette.rgb(3)
+        var stops: [Gradient.Stop] = []
+        for start in [0.0, 0.5] {
+            stops += [
+                .init(color: head, location: start),
+                .init(color: trail1.opacity(0.85), location: start + 0.06),
+                .init(color: trail2.opacity(0.6), location: start + 0.14),
+                .init(color: trail3.opacity(0.35), location: start + 0.24),
+                .init(color: trail3.opacity(0), location: start + 0.34)
+            ]
+        }
+        stops.append(.init(color: head, location: 1))
+        return stops
     }
 
     var body: some View {
@@ -393,17 +395,18 @@ private struct EdgeBeam: View {
                 center: .center,
                 angle: .degrees(turns.truncatingRemainder(dividingBy: 1) * 360)
             )
-            let base = palette.rgb(0)
+            // The steady light in the palette's second color (for the rim, the orb's core)
+            let base = palette.rgb(1)
             let edge = RoundedRectangle(cornerRadius: displayCornerRadius, style: .continuous)
 
             ZStack {
                 // Steady warm light, so the corners never go dark between beams
-                edge.inset(by: 6).stroke(base.opacity(0.35), lineWidth: 26).blur(radius: 22)
-                edge.inset(by: 1).stroke(base.opacity(0.55), lineWidth: 2).blur(radius: 1.5)
+                edge.inset(by: 8).stroke(base.opacity(0.6), lineWidth: 34).blur(radius: 24)
+                edge.inset(by: 1).stroke(base.opacity(0.85), lineWidth: 3).blur(radius: 1.5)
                 // The moving beams: inner bloom, glow, core
-                edge.inset(by: 8).stroke(beam, lineWidth: 34).blur(radius: 26).opacity(0.45)
-                edge.inset(by: 3).stroke(beam, lineWidth: 9).blur(radius: 7).opacity(0.75)
-                edge.inset(by: 1).stroke(beam, lineWidth: 2.2).blur(radius: 0.6)
+                edge.inset(by: 10).stroke(beam, lineWidth: 44).blur(radius: 28).opacity(0.7)
+                edge.inset(by: 3).stroke(beam, lineWidth: 12).blur(radius: 8).opacity(0.95)
+                edge.inset(by: 1.5).stroke(beam, lineWidth: 3).blur(radius: 0.6)
             }
             // Only the bottom 40% of the screen, fading in above it
             .mask {
