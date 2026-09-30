@@ -54,7 +54,8 @@ class SafetyClassifier:
         connector = clause.connector
         trigger = clause.trigger
 
-        result = self._apply_rules(text, connector, trigger)
+        # The rules were tuned on unspaced text (length limits, last-10-character checks)
+        result = self._apply_rules(text.replace(" ", ""), connector, trigger)
 
         logger.info(
             f"Classifier: {result.value.upper()} for '{text}' "

@@ -313,7 +313,7 @@ struct GenderDetectedMessage: Codable {
 // MARK: - Conversation Events (both sides of the chat)
 
 /// Whose words a conversation line holds
-enum ConversationSide: Equatable {
+enum ConversationSide: Hashable {
     case me
     case partner
 }
@@ -353,6 +353,8 @@ struct ConversationLine: Identifiable, Equatable {
     /// The server's segment_id (a fresh UUID for a translation that arrived without one)
     let id: String
     let side: ConversationSide
+    /// The chat bubble this segment shows in (a speaker's consecutive segments share one)
+    let turn: String
     var original: String
     var translated: String? = nil
     /// Set when the server reported it couldn't translate this segment
@@ -362,28 +364,92 @@ struct ConversationLine: Identifiable, Equatable {
     var isPending: Bool { translated == nil && failure == nil }
 }
 
+/// What a speaker is saying right now (the server's interim transcript), before it becomes a segment
+struct LiveCaption: Equatable {
+    var text: String
+    /// The chat bubble it shows at the end of
+    let turn: String
+    let startedAt: Date
+}
+
+/// One chat bubble: a speaker's consecutive segments, then whatever they're still saying
+struct ConversationTurn: Identifiable, Equatable {
+    let id: String
+    let side: ConversationSide
+    /// In the speaker's language: the finished segments, then the live caption
+    var original: String = ""
+    /// The finished segments' translations so far
+    var translated: String = ""
+    /// The newest segment in this bubble the server couldn't translate
+    var failure: TranslationFailureEvent? = nil
+    /// The speaker is still talking into this bubble
+    var isLive: Bool = false
+    /// A finished segment is still waiting for its translation
+    var isAwaitingTranslation: Bool = false
+
+    fileprivate mutating func add(_ line: ConversationLine) {
+        original = Self.joined(original, line.original)
+        if let translation = line.translated { translated = Self.joined(translated, translation) }
+        if let lineFailure = line.failure { failure = lineFailure }
+        if line.isPending { isAwaitingTranslation = true }
+    }
+
+    fileprivate mutating func add(_ caption: LiveCaption) {
+        original = Self.joined(original, caption.text)
+        isLive = true
+    }
+
+    private static func joined(_ text: String, _ more: String) -> String {
+        if more.isEmpty { return text }
+        return text.isEmpty ? more : text + " " + more
+    }
+}
+
 /// Both sides of the conversation, joined by the server's segment_id.
 ///
 /// A final transcript starts a line; the matching translation (or failure) fills it in.
 /// A translation or failure for an unknown segment starts its own line, so nothing is
-/// dropped. Interim transcripts are live captions, not lines, and are ignored here.
+/// dropped. Interim transcripts are each side's live caption until their final arrives.
+/// `turns` groups a speaker's consecutive lines, and their live caption, into chat bubbles.
 struct ConversationLog: Equatable {
     private(set) var lines: [ConversationLine] = []
+    /// What each side is saying right now (not yet a finished segment)
+    private(set) var liveCaptions: [ConversationSide: LiveCaption] = [:]
     /// Oldest lines are dropped beyond this many
     var maxLines: Int = 200
+    /// A speaker's next words join their last bubble if they spoke this recently...
+    var turnGap: TimeInterval = 4
+    /// ...and nobody else spoke since, and the bubble holds fewer segments than this
+    var maxSegmentsPerTurn: Int = 4
+    /// When each side last said something (interim or final)
+    private var lastSpokeAt: [ConversationSide: Date] = [:]
 
     var latest: ConversationLine? { lines.last }
 
-    mutating func apply(_ event: TranscriptEvent, side: ConversationSide) {
-        guard event.isFinal, let id = event.segmentId else { return }
+    mutating func apply(_ event: TranscriptEvent, side: ConversationSide, at now: Date = Date()) {
+        guard event.isFinal else {
+            // Live caption: what's being said right now (the server includes words it's holding back)
+            let text = event.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { return }
+            if liveCaptions[side] != nil {
+                liveCaptions[side]?.text = text
+            } else {
+                liveCaptions[side] = LiveCaption(text: text, turn: turnForNewSpeech(by: side, at: now), startedAt: now)
+            }
+            lastSpokeAt[side] = now
+            return
+        }
+        guard let id = event.segmentId else { return }
         if let index = index(of: id, side: side) {
             lines[index].original = event.text
         } else {
-            append(ConversationLine(id: id, side: side, original: event.text))
+            append(ConversationLine(id: id, side: side, turn: turnForNewSpeech(by: side, at: now), original: event.text))
         }
+        consumeCaption(event.text, side: side)
+        lastSpokeAt[side] = now
     }
 
-    mutating func apply(_ event: TranslationEvent, side: ConversationSide) {
+    mutating func apply(_ event: TranslationEvent, side: ConversationSide, at now: Date = Date()) {
         if let id = event.segmentId, let index = index(of: id, side: side) {
             if lines[index].original.isEmpty { lines[index].original = event.original }
             lines[index].translated = event.translated
@@ -392,13 +458,16 @@ struct ConversationLog: Equatable {
             append(ConversationLine(
                 id: event.segmentId ?? UUID().uuidString,
                 side: side,
+                turn: turnForNewSpeech(by: side, at: now),
                 original: event.original,
                 translated: event.translated
             ))
+            consumeCaption(event.original, side: side)
+            lastSpokeAt[side] = now
         }
     }
 
-    mutating func apply(_ event: TranslationFailureEvent, side: ConversationSide) {
+    mutating func apply(_ event: TranslationFailureEvent, side: ConversationSide, at now: Date = Date()) {
         if let id = event.segmentId, let index = index(of: id, side: side) {
             if lines[index].original.isEmpty, let original = event.original {
                 lines[index].original = original
@@ -408,10 +477,90 @@ struct ConversationLog: Equatable {
             append(ConversationLine(
                 id: event.segmentId ?? UUID().uuidString,
                 side: side,
+                turn: turnForNewSpeech(by: side, at: now),
                 original: event.original ?? "",
                 failure: event
             ))
+            consumeCaption(event.original ?? "", side: side)
+            lastSpokeAt[side] = now
         }
+    }
+
+    /// Drops live captions whose final will never come (the partner left, the connection dropped,
+    /// or the session ended). Nil ends both sides'.
+    mutating func endLiveCaptions(of side: ConversationSide? = nil) {
+        if let side {
+            liveCaptions[side] = nil
+        } else {
+            liveCaptions.removeAll()
+        }
+    }
+
+    /// The chat bubbles, oldest first. A live caption ends its speaker's bubble; one whose
+    /// bubble has no finished segment yet is a new bubble at the bottom.
+    var turns: [ConversationTurn] {
+        var result: [ConversationTurn] = []
+        var position: [String: Int] = [:]
+        for line in lines {
+            if position[line.turn] == nil {
+                position[line.turn] = result.count
+                result.append(ConversationTurn(id: line.turn, side: line.side))
+            }
+            result[position[line.turn]!].add(line)
+        }
+        for (side, caption) in liveCaptions.sorted(by: { $0.value.startedAt < $1.value.startedAt }) {
+            if position[caption.turn] == nil {
+                position[caption.turn] = result.count
+                result.append(ConversationTurn(id: caption.turn, side: side))
+            }
+            result[position[caption.turn]!].add(caption)
+        }
+        return result
+    }
+
+    /// The bubble a side's new words go in: the one they're speaking into, else their last bubble
+    /// if it's still the newest, recent and not full, else a new one
+    private func turnForNewSpeech(by side: ConversationSide, at now: Date) -> String {
+        if let caption = liveCaptions[side] { return caption.turn }
+        if let last = lines.last, last.side == side,
+           let spoke = lastSpokeAt[side], now.timeIntervalSince(spoke) < turnGap,
+           lines.filter({ $0.turn == last.turn }).count < maxSegmentsPerTurn {
+            return last.turn
+        }
+        return UUID().uuidString
+    }
+
+    /// A final segment replaces the start of the live caption; what's left is still being said
+    private mutating func consumeCaption(_ spoken: String, side: ConversationSide) {
+        guard let caption = liveCaptions[side] else { return }
+        if let rest = Self.remainder(of: caption.text, after: spoken), !rest.isEmpty {
+            liveCaptions[side]?.text = rest
+        } else {
+            liveCaptions[side] = nil
+        }
+    }
+
+    /// The words of `caption` after `prefix`, matching letters and digits only (finals add
+    /// punctuation and capitals). Nil when the caption doesn't start with those words.
+    static func remainder(of caption: String, after prefix: String) -> String? {
+        let wanted = prefix.lowercased().filter { $0.isLetter || $0.isNumber }
+        var next = wanted.startIndex
+        var index = caption.startIndex
+        while next < wanted.endIndex, index < caption.endIndex {
+            let character = caption[index]
+            if character.isLetter || character.isNumber {
+                guard character.lowercased() == String(wanted[next]) else { return nil }
+                next = wanted.index(after: next)
+            }
+            index = caption.index(after: index)
+        }
+        guard next == wanted.endIndex else { return nil }
+        // The prefix must end on a word boundary: skip its trailing punctuation, then expect a space
+        while index < caption.endIndex, !caption[index].isWhitespace {
+            if caption[index].isLetter || caption[index].isNumber { return nil }
+            index = caption.index(after: index)
+        }
+        return caption[index...].trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func index(of id: String, side: ConversationSide) -> Int? {

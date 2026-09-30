@@ -7,17 +7,19 @@ import UIKit
 // MARK: - Typography from Figma
 
 /// Which typography the app renders with. Classic is the shipping look; Söhne is a debug-only
-/// trial (Debug Controls > TYPOGRAPHY, or launch with `-debugTypographyStyle sohne`) that may
-/// become the default later. Release builds always use Classic.
+/// trial and the Debug-build default (switch in Debug Controls > TYPOGRAPHY, or launch with
+/// `-debugTypographyStyle classic`). Release builds always use Classic.
 enum TypographyStyle: String, CaseIterable {
     case classic
     case sohne
 
     static let storageKey = "debugTypographyStyle"
+    /// What Debug builds use until TYPOGRAPHY is switched
+    static let debugDefault: TypographyStyle = .sohne
 
     static var current: TypographyStyle {
         #if DEBUG
-        return TypographyStyle(rawValue: UserDefaults.standard.string(forKey: storageKey) ?? "") ?? .classic
+        return TypographyStyle(rawValue: UserDefaults.standard.string(forKey: storageKey) ?? "") ?? debugDefault
         #else
         return .classic
         #endif

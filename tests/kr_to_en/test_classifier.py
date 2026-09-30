@@ -147,3 +147,19 @@ class TestNegationPattern:
             trigger="sentence_end"
         )
         assert classifier.classify(clause) == ClassifierResult.SAFE
+
+    def test_spaces_do_not_change_the_decision(self, classifier):
+        """Clauses now keep their spacing; the rules still see the unspaced text they were tuned on."""
+        cases = [
+            ("저는 그 영화를 보고", "고", "connector"),
+            ("서울에 있는", "는", "connector"),
+            ("어제 친구를 만나서 같이 밥을 먹고 영화도 보고", "고", "connector"),
+            ("비가 오는데 우산이 없어서 편의점에", "서", "connector"),
+            ("밥을 먹었어요", "요", "sentence_end"),
+        ]
+        for text, connector, trigger in cases:
+            spaced = classifier.classify(ClauseResult(text=text, connector=connector, trigger=trigger))
+            unspaced = classifier.classify(
+                ClauseResult(text=text.replace(" ", ""), connector=connector, trigger=trigger)
+            )
+            assert spaced == unspaced, f"'{text}' decided differently with spaces"

@@ -158,9 +158,13 @@ class KrToEnPipeline(BasePipeline):
                             self._last_interim_ms = result.timestamp_ms
                             self._had_final_since_interim = False
                             if self.on_interim:
+                                # Live caption: words still waiting for a segment boundary
+                                # (Deepgram's interims restart after each final), then what's
+                                # being said now
+                                pending = self.clause_detector.pending_text
                                 msg = TranscriptInterim(
                                     direction=TranslationDirection.KO_TO_EN,
-                                    text=result.text,
+                                    text=f"{pending} {result.text}".strip(),
                                 )
                                 self.on_interim(msg)
                         continue

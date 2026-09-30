@@ -119,8 +119,8 @@ class KoreanClauseDetector:
         trigger: str,
         connector: Optional[str] = None,
     ) -> ClauseResult:
-        """Flush the buffer and return a clause result."""
-        clause = "".join(self._buffer)
+        """Flush the buffer and return a clause result (words keep their spacing)."""
+        clause = " ".join(self._buffer)
         self._buffer = []
         self._buffer_start_time = None
 
@@ -155,8 +155,13 @@ class KoreanClauseDetector:
 
     @property
     def current_buffer(self) -> str:
-        """Get current buffer content."""
+        """Get current buffer content, without spaces (what the ending checks match against)."""
         return "".join(self._buffer)
+
+    @property
+    def pending_text(self) -> str:
+        """Words waiting for a clause boundary, spaced as spoken (for live captions)."""
+        return " ".join(self._buffer)
 
     def clear(self) -> None:
         """Clear the buffer."""

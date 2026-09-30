@@ -2946,13 +2946,6 @@ struct LiveTranslationScreen: View {
             AppColors.background
                 .ignoresSafeArea()
 
-            // Language Selector - 32px below dynamic island
-            VStack {
-                languageSelectorView
-                    .padding(.top, 32)
-                Spacer()
-            }
-
             // Bubble - centered in screen
             VStack(spacing: 24) {
                 // Animated bubble with extra space for glow effects
@@ -2965,16 +2958,23 @@ struct LiveTranslationScreen: View {
                 )
                 .frame(width: 400, height: 400)  // Larger container to prevent glow clipping
 
-                // Latest line of the conversation (mine or the partner's) with its translation
-                if let line = conversation.latest {
-                    translationDisplayView(for: line)
-                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
-                }
+            }
+            // Language Selector - 32px below dynamic island, then both sides of the conversation
+            // as chat bubbles, over the orb, from under the language boxes down to the mic button
+            VStack(spacing: 0) {
+                languageSelectorView
+                    .padding(.top, 32)
+                ConversationChatView(turns: conversation.turns, isKorean: isKorean)
             }
 
+            .ignoresSafeArea(edges: .bottom)
+            // Newest bubble 16pt above the mic button (60pt up, 80pt tall); the chat's own bottom
+            // padding holds its shadow
+            .padding(.bottom, 60 + 80 + 16 - ConversationChatView.bottomShadowRoom)
             // Instruction text - centered both vertically and horizontally
-            // Only shows before first mic tap, never shows again after pause
-            if !hasStartedOnce {
+            // Only shows before first mic tap, never shows again after pause, and gives way to the
+            // chat if the partner speaks first
+            if !hasStartedOnce && conversation.lines.isEmpty && conversation.liveCaptions.isEmpty {
                 Text(isKorean ? "마이크를 눌러 시작하세요!" : "Tap the mic to start.")
                     .font(isKorean ? AppTypography.h2Korean : AppTypography.h2)
                     .foregroundColor(AppColors.primaryText)
@@ -3130,59 +3130,6 @@ struct LiveTranslationScreen: View {
         }
     }
 
-    // MARK: - Translation Display View
-    private func translationDisplayView(for line: ConversationLine) -> some View {
-        // My words are translated into the partner's language, theirs into mine
-        let translatedIsKorean = (line.side == .partner) == isKorean
-
-        return VStack(spacing: 8) {
-            // Who said it
-            Text(line.side == .me ? (isKorean ? "나" : "You") : (isKorean ? "상대방" : "Partner"))
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(AppColors.primaryText.opacity(0.5))
-
-            // What was said, in the speaker's language
-            if !line.original.isEmpty {
-                Text(line.original)
-                    .font(.system(size: 14))
-                    .foregroundColor(AppColors.primaryText.opacity(0.6))
-                    .multilineTextAlignment(.center)
-            }
-
-            // Divider
-            Rectangle()
-                .fill(AppColors.primaryText.opacity(0.2))
-                .frame(width: 60, height: 1)
-
-            // Its translation, or why there is none
-            if let failure = line.failure {
-                Text(failureText(for: failure))
-                    .font(.system(size: 14))
-                    .foregroundColor(AppColors.errorRed)
-                    .multilineTextAlignment(.center)
-            } else {
-                Text(line.translated ?? "…")
-                    .font(translatedIsKorean ? AppTypography.h3Korean : AppTypography.h3)
-                    .foregroundColor(AppColors.primaryText)
-                    .multilineTextAlignment(.center)
-            }
-        }
-        .padding(.horizontal, 32)
-        .padding(.vertical, 16)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color.white.opacity(0.3))
-        )
-    }
-
-    /// Notice for a segment the server couldn't translate, in this phone's language
-    private func failureText(for failure: TranslationFailureEvent) -> String {
-        if failure.isRefusal {
-            return isKorean ? "번역할 수 없었어요. 다시 말씀해 주세요." : "Couldn't translate that - please rephrase."
-        }
-        return isKorean ? "번역에 실패했어요. 다시 시도해 주세요." : failure.message
-    }
-
     // MARK: - WebSocket Setup
     private func setupWebSocket() {
         // Set up callbacks for session events
@@ -3212,6 +3159,7 @@ struct LiveTranslationScreen: View {
             DispatchQueue.main.async {
                 isPartnerConnected = false
                 print("[LiveTranslation] Partner left")
+                withAnimation { conversation.endLiveCaptions(of: .partner) }  // their last words won't be finished
             }
         }
 
@@ -3278,6 +3226,7 @@ struct LiveTranslationScreen: View {
                 isJoining = false
                 pendingCaptureStart = false
                 withAnimation {
+                withAnimation { conversation.endLiveCaptions() }  // no finals will come for live words
                     isSessionActive = false
                 }
                 stopAudioCapture()
@@ -3449,6 +3398,12 @@ struct LiveTranslationScreen: View {
                         orbStateDebugSection
 
                         Divider()
+                        Divider()
+                            .background(Color.white.opacity(0.2))
+
+                        // Chat text reveal style, and a scripted conversation to watch it
+                        ChatDebugSection(conversation: $conversation, iSpeakKorean: isKorean)
+
                             .background(Color.white.opacity(0.2))
 
                         // Language toggle section
@@ -3594,6 +3549,10 @@ struct LiveTranslationScreen: View {
             selectedBubbleStyle = style
         }
     }
+        if args.contains("-chatDemo") {
+            // Scripted two-person conversation, to screenshot the chat without a partner phone
+            _ = ConversationDemo.play(into: $conversation, iSpeakKorean: isKorean)
+        }
 
     private var languageDebugSection: some View {
         VStack(alignment: .leading, spacing: 8) {

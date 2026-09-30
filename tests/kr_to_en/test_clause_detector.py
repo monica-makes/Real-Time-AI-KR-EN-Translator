@@ -138,6 +138,24 @@ class TestClauseDetectorEdgeCases:
         assert result.text == "테스트"
         assert result.trigger == "force"
 
+    def test_clause_keeps_word_spacing(self):
+        """Clauses and the live caption keep the spaces between words; the ending checks don't see them."""
+        detector = KoreanClauseDetector()
+        assert detector.add_word("오늘", 0) is None
+        assert detector.add_word("날씨", 10) is None
+        assert detector.pending_text == "오늘 날씨"
+        assert detector.current_buffer == "오늘날씨"
+        assert detector.force_flush().text == "오늘 날씨"
+        assert detector.pending_text == ""
+
+    def test_returned_clause_keeps_word_spacing(self):
+        """A clause the classifier holds back rejoins the buffer word by word."""
+        from src.models import ClauseResult
+        detector = KoreanClauseDetector()
+        detector.return_to_buffer(ClauseResult(text="서울에 있는", connector="는", trigger="connector"))
+        assert detector.add_word("식당", 0) is None
+        assert detector.force_flush().text == "서울에 있는 식당"
+
     def test_clear(self):
         """Should clear buffer."""
         detector = KoreanClauseDetector()
