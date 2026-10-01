@@ -208,6 +208,8 @@ struct PairingModeDebugCard: View {
 struct WelcomeScreenLangSelect: View {
     @StateObject private var onboardingState = OnboardingState()
     @State private var showNewScreen = false
+    /// Where onboarding pages push in from right now (OnboardingPush)
+    @State private var pushEdge: Edge? = .trailing
     var onLanguageSelected: ((LanguageOption) -> Void)?
 
     private var selectedLanguage: LanguageOption? {
@@ -216,7 +218,9 @@ struct WelcomeScreenLangSelect: View {
 
     // Animation state
     @State private var isShowingEnglish = true
-    @State private var displayedHeading = ""
+    /// Heading reveal: seconds since it started, and when each letter comes in (BlurTypeRenderer)
+    @State private var revealElapsed: TimeInterval = 0
+    @State private var revealStarts: [TimeInterval] = []
     @State private var headingOpacity: Double = 1
     @State private var subtitleOpacity: Double = 0
     @State private var typewriterTimer: Timer?
@@ -253,30 +257,30 @@ struct WelcomeScreenLangSelect: View {
         isShowingEnglish ? englishSubtitle : koreanSubtitle
     }
 
-    // Heading view for typewriter effect
+    private var headingRenderer: BlurTypeRenderer {
+        BlurTypeRenderer(elapsed: revealElapsed, starts: revealStarts)
+    }
+
+    // Heading view: the full heading, revealed letter by letter with a blur (BlurTypeRenderer)
     // Korean heading: "👋 "Dari"에 오세요!" with emoji and "Dari" (with quotes) in English H1
     @ViewBuilder
     private var welcomeHeadingView: some View {
         if isShowingEnglish {
             // English: simple single-font text
-            Text(displayedHeading)
+            Text(englishHeading)
                 .font(AppTypography.h1)
                 .lineSpacing(44 - 34)
                 .tracking(0.88)
                 .foregroundColor(AppColors.primaryText)
+                .textRenderer(headingRenderer)
         } else {
             // Korean: mixed fonts - "👋 "Dari" " (English H1) + "에 오세요!" (Korean H1)
             // Korean heading structure: "👋 "Dari" 에 오세요!"
             // Indices: 0-8 = "👋 space"Dari"space" (9 chars), 9+ = "에 오세요!"
-            let revealed = displayedHeading
             let englishPartEnd = 9  // "👋 space"Dari"space" is 9 characters (includes trailing space)
 
-            let englishPart = String(revealed.prefix(min(revealed.count, englishPartEnd)))
-            let koreanPart: String = {
-                if revealed.count <= englishPartEnd { return "" }
-                let start = revealed.index(revealed.startIndex, offsetBy: englishPartEnd)
-                return String(revealed[start...])
-            }()
+            let englishPart = String(koreanHeading.prefix(englishPartEnd))
+            let koreanPart = String(koreanHeading.dropFirst(englishPartEnd))
 
             // Noto Serif KR has a taller ascent than PP Editorial New, so as soon as the first
             // Korean character is typed the line box grows and a top-aligned line slides down.
@@ -295,6 +299,7 @@ struct WelcomeScreenLangSelect: View {
                         .lineSpacing(44 - 32)  // Match English H1 line height (44) to prevent shifting during typewriter
                         .tracking(0.88)
                         .foregroundColor(AppColors.primaryText)
+                        .textRenderer(headingRenderer)
                         .fixedSize(horizontal: false, vertical: true)
                 }
         }
@@ -358,9 +363,7 @@ struct WelcomeScreenLangSelect: View {
                                 onLanguageSelected?(.english)
                                 // Navigate to new screen after short delay
                                 DispatchQueue.main.asyncAfter(deadline: .now() + AppStyle.cardSelectNavigationDelay) {
-                                    withAnimation(.easeInOut(duration: 0.4)) {
-                                        showNewScreen = true
-                                    }
+                                    OnboardingPush.go(.forward, edge: $pushEdge) { showNewScreen = true }
                                 }
                             }
 
@@ -372,9 +375,7 @@ struct WelcomeScreenLangSelect: View {
                                 onLanguageSelected?(.korean)
                                 // Navigate to Korean flow after short delay
                                 DispatchQueue.main.asyncAfter(deadline: .now() + AppStyle.cardSelectNavigationDelay) {
-                                    withAnimation(.easeInOut(duration: 0.4)) {
-                                        showNewScreen = true
-                                    }
+                                    OnboardingPush.go(.forward, edge: $pushEdge) { showNewScreen = true }
                                 }
                             }
                         }
@@ -390,25 +391,21 @@ struct WelcomeScreenLangSelect: View {
                     HomeLayoutDebugPanel()
                     #endif
                 }
-                .transition(.opacity)
+                .onboardingPush(from: pushEdge)
             }
 
             // New screen content - fades in based on selected language
             if showNewScreen {
                 if selectedLanguage == .korean {
                     KoreanSelectedScreen(onboardingState: onboardingState) {
-                        withAnimation(.easeInOut(duration: 0.4)) {
-                            showNewScreen = false
-                        }
+                        OnboardingPush.go(.back, edge: $pushEdge) { showNewScreen = false }
                     }
-                    .transition(.opacity)
+                    .onboardingPush(from: pushEdge)
                 } else {
                     EnglishSelectedScreen(onboardingState: onboardingState) {
-                        withAnimation(.easeInOut(duration: 0.4)) {
-                            showNewScreen = false
-                        }
+                        OnboardingPush.go(.back, edge: $pushEdge) { showNewScreen = false }
                     }
-                    .transition(.opacity)
+                    .onboardingPush(from: pushEdge)
                 }
             }
         }
@@ -441,8 +438,20 @@ struct WelcomeScreenLangSelect: View {
         }
 
         if isFirstTime {
-            // Reset for typewriter effect
-            displayedHeading = ""
+            // Each letter starts on the typewriter rhythm (0.2s lead-in, then one letter per
+            // interval) and blurs in over BlurTypeRenderer.letterDuration
+            var starts: [TimeInterval] = []
+            var lastLetterAt: TimeInterval = 0.2
+            for index in characters.indices {
+                lastLetterAt += typingInterval(index: index)
+                starts.append(lastLetterAt)
+            }
+            var reset = Transaction()
+            reset.disablesAnimations = true
+            withTransaction(reset) {
+                revealStarts = starts
+                revealElapsed = 0
+            }
             headingOpacity = 1
 
             // Start fading in subtitle as heading types
@@ -450,13 +459,27 @@ struct WelcomeScreenLangSelect: View {
                 subtitleOpacity = 1
             }
 
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                self.typeNextCharacter(characters: characters, index: 0)
+            // Next run loop, so the reset to 0 lands first and the reveal runs from 0
+            let total = BlurTypeRenderer.totalDuration(starts: starts)
+            DispatchQueue.main.async {
+                withAnimation(.linear(duration: total)) {
+                    self.revealElapsed = total
+                }
+            }
+
+            // Hold from when the last letter starts, as the typewriter held from its last letter
+            DispatchQueue.main.asyncAfter(deadline: .now() + lastLetterAt) {
+                self.scheduleHideAndSwitch()
             }
         } else {
             // Subsequent times: fade in both header and body at the exact same time
             // First, set both to hidden state immediately (no animation)
-            displayedHeading = currentHeading
+            var reset = Transaction()
+            reset.disablesAnimations = true
+            withTransaction(reset) {
+                revealStarts = []
+                revealElapsed = BlurTypeRenderer.letterDuration
+            }
             headingOpacity = 0
             subtitleOpacity = 0
 
@@ -469,25 +492,12 @@ struct WelcomeScreenLangSelect: View {
         }
     }
 
-    private func typeNextCharacter(characters: [Character], index: Int) {
-        guard index < characters.count else {
-            // Heading finished typing, schedule fade out after display duration
-            scheduleHideAndSwitch()
-            return
-        }
-
+    /// Gap before letter `index` starts
+    private func typingInterval(index: Int) -> TimeInterval {
         // Add slight random variation (±0.01s) for organic feel
         let baseInterval = 1.0 / charactersPerSecond
         let randomVariation = Double.random(in: -0.01...0.01)
-        let interval = max(0.02, baseInterval + randomVariation)
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + interval) { [self] in
-            // Animate each character with ease-out for soft landing
-            withAnimation(.easeOut(duration: 0.08)) {
-                displayedHeading.append(characters[index])
-            }
-            typeNextCharacter(characters: characters, index: index + 1)
-        }
+        return max(0.02, baseInterval + randomVariation)
     }
 
     private func scheduleHideAndSwitch() {
@@ -507,7 +517,9 @@ struct WelcomeScreenLangSelect: View {
 
         // Switch language and restart after fade out completes
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-            displayedHeading = ""
+            var reset = Transaction()
+            reset.disablesAnimations = true
+            withTransaction(reset) { revealElapsed = 0 }
             isShowingEnglish.toggle()
             typeHeading()
         }
@@ -765,6 +777,8 @@ struct EnglishSelectedScreen: View {
     // First screen after picking a language depends on the pairing mode (see PairingEntryMode)
     @State private var currentScreen: GetStartedScreenState =
         PairingEntryMode.current == .starterJoiner ? .selection : .pairing(direction: "en_to_kr")
+    /// Where pages push in from right now (OnboardingPush)
+    @State private var pushEdge: Edge? = .trailing
 
     private var selectedCard: String? {
         switch onboardingState.selectedSessionMode {
@@ -822,7 +836,7 @@ struct EnglishSelectedScreen: View {
                             ) {
                                 onboardingState.selectedSessionMode = .create
                                 DispatchQueue.main.asyncAfter(deadline: .now() + AppStyle.cardSelectNavigationDelay) {
-                                    withAnimation(.easeInOut(duration: 0.4)) {
+                                    OnboardingPush.go(.forward, edge: $pushEdge) {
                                         currentScreen = .manualPairing(roomCode: "")
                                     }
                                 }
@@ -837,7 +851,7 @@ struct EnglishSelectedScreen: View {
                             ) {
                                 onboardingState.selectedSessionMode = .join
                                 DispatchQueue.main.asyncAfter(deadline: .now() + AppStyle.cardSelectNavigationDelay) {
-                                    withAnimation(.easeInOut(duration: 0.4)) {
+                                    OnboardingPush.go(.forward, edge: $pushEdge) {
                                         currentScreen = .manualPairing(roomCode: "")
                                     }
                                 }
@@ -870,7 +884,7 @@ struct EnglishSelectedScreen: View {
                         Spacer()
                         PairingModeDebugCard { mode in
                             if mode == .autoPairing {
-                                withAnimation(.easeInOut(duration: 0.4)) {
+                                OnboardingPush.go(.forward, edge: $pushEdge) {
                                     currentScreen = .pairing(direction: "en_to_kr")
                                 }
                             }
@@ -880,7 +894,7 @@ struct EnglishSelectedScreen: View {
                     }
                     #endif
                 }
-                .transition(.opacity)
+                .onboardingPush(from: pushEdge)
             }
 
             // Pairing screen
@@ -892,17 +906,17 @@ struct EnglishSelectedScreen: View {
                         onBackTapped?()
                     },
                     onManualPairing: { roomCode in
-                        withAnimation(.easeInOut(duration: 0.4)) {
+                        OnboardingPush.go(.forward, edge: $pushEdge) {
                             currentScreen = .selection  // Go to Create/Join selection when auto-pairing fails
                         }
                     },
                     onSuccess: { roomId in
-                        withAnimation(.easeInOut(duration: 0.4)) {
+                        OnboardingPush.go(.forward, edge: $pushEdge) {
                             currentScreen = .success(roomId: roomId)
                         }
                     }
                 )
-                .transition(.opacity)
+                .onboardingPush(from: pushEdge)
             }
 
             // Manual pairing screen
@@ -911,17 +925,17 @@ struct EnglishSelectedScreen: View {
                     sessionMode: onboardingState.selectedSessionMode ?? .create,
                     roomCode: roomCode,
                     onBackTapped: {
-                        withAnimation(.easeInOut(duration: 0.4)) {
+                        OnboardingPush.go(.back, edge: $pushEdge) {
                             currentScreen = .selection  // Go back to Create/Join selection
                         }
                     },
                     onSuccess: { roomId in
-                        withAnimation(.easeInOut(duration: 0.4)) {
+                        OnboardingPush.go(.forward, edge: $pushEdge) {
                             currentScreen = .success(roomId: roomId)
                         }
                     }
                 )
-                .transition(.opacity)
+                .onboardingPush(from: pushEdge)
             }
 
             // Success screen
@@ -929,17 +943,17 @@ struct EnglishSelectedScreen: View {
                 SetupSuccessScreen(
                     roomId: roomId,
                     onProceed: {
-                        withAnimation(.easeInOut(duration: 0.4)) {
+                        OnboardingPush.go(.fade, edge: $pushEdge) {
                             currentScreen = .liveTranslation(roomId: roomId)
                         }
                     },
                     onBackTapped: {
-                        withAnimation(.easeInOut(duration: 0.4)) {
+                        OnboardingPush.go(.back, edge: $pushEdge) {
                             currentScreen = .pairing(direction: onboardingState.selectedSessionMode == .create ? "en_to_kr" : "kr_to_en")
                         }
                     }
                 )
-                .transition(.opacity)
+                .onboardingPush(from: pushEdge)
             }
 
             // Live Translation screen (English user)
@@ -962,6 +976,8 @@ struct KoreanSelectedScreen: View {
     // First screen after picking a language depends on the pairing mode (see PairingEntryMode)
     @State private var currentScreen: GetStartedScreenState =
         PairingEntryMode.current == .starterJoiner ? .selection : .pairing(direction: "kr_to_en")
+    /// Where pages push in from right now (OnboardingPush)
+    @State private var pushEdge: Edge? = .trailing
 
     private var selectedCard: String? {
         switch onboardingState.selectedSessionMode {
@@ -1019,7 +1035,7 @@ struct KoreanSelectedScreen: View {
                             ) {
                                 onboardingState.selectedSessionMode = .create
                                 DispatchQueue.main.asyncAfter(deadline: .now() + AppStyle.cardSelectNavigationDelay) {
-                                    withAnimation(.easeInOut(duration: 0.4)) {
+                                    OnboardingPush.go(.forward, edge: $pushEdge) {
                                         currentScreen = .manualPairing(roomCode: "")
                                     }
                                 }
@@ -1034,7 +1050,7 @@ struct KoreanSelectedScreen: View {
                             ) {
                                 onboardingState.selectedSessionMode = .join
                                 DispatchQueue.main.asyncAfter(deadline: .now() + AppStyle.cardSelectNavigationDelay) {
-                                    withAnimation(.easeInOut(duration: 0.4)) {
+                                    OnboardingPush.go(.forward, edge: $pushEdge) {
                                         currentScreen = .manualPairing(roomCode: "")
                                     }
                                 }
@@ -1067,7 +1083,7 @@ struct KoreanSelectedScreen: View {
                         Spacer()
                         PairingModeDebugCard { mode in
                             if mode == .autoPairing {
-                                withAnimation(.easeInOut(duration: 0.4)) {
+                                OnboardingPush.go(.forward, edge: $pushEdge) {
                                     currentScreen = .pairing(direction: "kr_to_en")
                                 }
                             }
@@ -1077,7 +1093,7 @@ struct KoreanSelectedScreen: View {
                     }
                     #endif
                 }
-                .transition(.opacity)
+                .onboardingPush(from: pushEdge)
             }
 
             // Pairing screen (Korean)
@@ -1089,17 +1105,17 @@ struct KoreanSelectedScreen: View {
                         onBackTapped?()
                     },
                     onManualPairing: { roomCode in
-                        withAnimation(.easeInOut(duration: 0.4)) {
+                        OnboardingPush.go(.forward, edge: $pushEdge) {
                             currentScreen = .selection  // Go to Create/Join selection when auto-pairing fails
                         }
                     },
                     onSuccess: { roomId in
-                        withAnimation(.easeInOut(duration: 0.4)) {
+                        OnboardingPush.go(.forward, edge: $pushEdge) {
                             currentScreen = .success(roomId: roomId)
                         }
                     }
                 )
-                .transition(.opacity)
+                .onboardingPush(from: pushEdge)
             }
 
             // Manual pairing screen (Korean)
@@ -1108,17 +1124,17 @@ struct KoreanSelectedScreen: View {
                     sessionMode: onboardingState.selectedSessionMode ?? .create,
                     roomCode: roomCode,
                     onBackTapped: {
-                        withAnimation(.easeInOut(duration: 0.4)) {
+                        OnboardingPush.go(.back, edge: $pushEdge) {
                             currentScreen = .selection  // Go back to Create/Join selection
                         }
                     },
                     onSuccess: { roomId in
-                        withAnimation(.easeInOut(duration: 0.4)) {
+                        OnboardingPush.go(.forward, edge: $pushEdge) {
                             currentScreen = .success(roomId: roomId)
                         }
                     }
                 )
-                .transition(.opacity)
+                .onboardingPush(from: pushEdge)
             }
 
             // Success screen (Korean)
@@ -1126,17 +1142,17 @@ struct KoreanSelectedScreen: View {
                 SetupSuccessScreenKorean(
                     roomId: roomId,
                     onProceed: {
-                        withAnimation(.easeInOut(duration: 0.4)) {
+                        OnboardingPush.go(.fade, edge: $pushEdge) {
                             currentScreen = .liveTranslation(roomId: roomId)
                         }
                     },
                     onBackTapped: {
-                        withAnimation(.easeInOut(duration: 0.4)) {
+                        OnboardingPush.go(.back, edge: $pushEdge) {
                             currentScreen = .pairing(direction: onboardingState.selectedSessionMode == .create ? "kr_to_en" : "en_to_kr")
                         }
                     }
                 )
-                .transition(.opacity)
+                .onboardingPush(from: pushEdge)
             }
 
             // Live Translation screen (Korean user)

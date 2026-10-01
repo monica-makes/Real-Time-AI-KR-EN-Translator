@@ -3037,6 +3037,9 @@ struct LiveTranslationScreen: View {
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .transition(.opacity)
+                    // Stays in front while it fades: a ZStack draws a leaving view at the bottom,
+                    // behind the opaque background, so it vanished at once instead of fading
+                    .zIndex(1)
             }
 
             // Connection status indicator (top right)
@@ -3056,6 +3059,7 @@ struct LiveTranslationScreen: View {
                 if isMicMenuOpen {
                     MicMenuCards(
                         isMaleVoice: voiceChoice == .male,
+                        isHonorificsOn: honorificsOn,
                         voiceTitle: voiceTitle,
                         honorificsTitle: honorificsTitle,
                         isKorean: isKorean,
