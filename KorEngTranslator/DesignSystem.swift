@@ -538,7 +538,7 @@ struct SelectedCardBorder: View {
     let isSelected: Bool
     var cornerRadius: CGFloat = AppStyle.cornerRadius
 
-    static let drawDuration: Double = 0.36
+    static let drawDuration: Double = 0.4
 
     var body: some View {
         FeatheredCardBorder(cornerRadius: cornerRadius, progress: isSelected ? 1 : 0)
@@ -1353,10 +1353,13 @@ struct SecondaryRoundButton: View {
 // MARK: - Mic Menu Cards
 
 /// The voice & honorifics cards the mic control lifts to uncover (Figma "Korean AI Translator",
-/// node 300:13161): two 88pt glass cards, each a 28pt Phosphor icon over a 16pt label. The cards keep
-/// Figma's 168pt width and sit 20pt from the screen's edges, like the language boxes at the top.
+/// node 300:13161): two 88pt glass cards, each a 28pt Phosphor icon over a 16pt label. Figma's cards were
+/// 168pt wide, 20pt from the screen's edges; each now reaches 5pt further on both sides (178pt on a
+/// 402pt screen, 15pt from the edges), so the gap between them is the 16pt gap above them to the lifted
+/// mic (lifted 96pt; the cards' tops sit 80pt above its resting bottom).
 struct MicMenuCards: View {
     let isMaleVoice: Bool
+    let isHonorificsOn: Bool
     let voiceTitle: String
     let honorificsTitle: String
     var isKorean: Bool = false
@@ -1366,18 +1369,20 @@ struct MicMenuCards: View {
     /// The cards come in (and go) over 400ms on the lift's ease-out
     static let revealAnimation = Animation.timingCurve(0.22, 1, 0.36, 1, duration: 0.4)
 
-    static let cardWidth: CGFloat = 168
+    /// Between the cards: the same as the gap above them to the lifted mic
+    static let cardGap: CGFloat = 16
+    static let sideMargin: CGFloat = 15
 
     var body: some View {
-        HStack(spacing: 0) {
+        HStack(spacing: Self.cardGap) {
             MicMenuCard(iconName: "gender-female", alternateIconName: "gender-male", showsAlternate: isMaleVoice,
                         title: voiceTitle, isKorean: isKorean, action: onVoiceTapped)
-                .frame(width: Self.cardWidth)
-            Spacer(minLength: 10)
-            MicMenuCard(iconName: "crown-simple", title: honorificsTitle, isKorean: isKorean, action: onHonorificsTapped)
-                .frame(width: Self.cardWidth)
+                .frame(maxWidth: .infinity)
+            MicMenuCard(iconName: "crown-simple", alternateIconName: "crown-simple-slash", showsAlternate: !isHonorificsOn,
+                        title: honorificsTitle, isKorean: isKorean, action: onHonorificsTapped)
+                .frame(maxWidth: .infinity)
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, Self.sideMargin)
     }
 }
 
@@ -1390,9 +1395,11 @@ private struct MicMenuCard: View {
     let action: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.micMenuRevealBlur) private var revealBlur
 
     var body: some View {
         Button(action: action) {
+            // The icon swap and the label's text swap start together on the tap
             VStack(spacing: 8) {
                 ZStack {
                     icon(iconName)
@@ -1404,19 +1411,23 @@ private struct MicMenuCard: View {
                 }
                 .animation(reduceMotion ? nil : IconSwap.animation, value: showsAlternate)
 
-                Text(title)
-                    .font(isKorean ? AppTypography.optionLabelKorean : AppTypography.optionLabel)
-                    .foregroundColor(AppColors.secondaryText)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                    .frame(height: 20)
+                SwappingText(title) {
+                    Text($0)
+                        .font(isKorean ? AppTypography.optionLabelKorean : AppTypography.optionLabel)
+                        .foregroundColor(AppColors.secondaryText)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .frame(height: 20)
+                }
             }
-            .padding(.vertical, 16)
+            .blur(radius: revealBlur)  // the reveal blurs the contents, never the glass
+            .padding(.vertical, 9)  // the glass style adds 7pt a side → the 88pt card
             .frame(maxWidth: .infinity)
-            .contentShape(.rect(cornerRadius: AppStyle.cornerRadius))
         }
-        .buttonStyle(.plain)
-        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: AppStyle.cornerRadius))
+        // System glass button style: iOS draws the glass and its press state, like every glass
+        // button on the phone's iOS version
+        .buttonStyle(.glass)
+        .buttonBorderShape(.roundedRectangle(radius: AppStyle.cornerRadius))
     }
 
     private func icon(_ name: String) -> some View {
@@ -1428,20 +1439,33 @@ private struct MicMenuCard: View {
     }
 }
 
-/// The mic menu cards' reveal: in from an 8pt blur, 104% scale and transparent (and back out)
-private struct MicMenuRevealEffect: ViewModifier {
-    let isShown: Bool
+/// The mic menu cards' reveal: in from 104% scale and transparent, their icons and labels from an 8pt
+/// blur (and back out). Only the contents blur: blurring the glass itself flattens it to a bitmap,
+/// and the 104% scale then left its corners jagged.
+private struct MicMenuRevealEffect: ViewModifier, Animatable {
+    /// 0 = hidden, 1 = shown
+    var progress: Double
+
+    var animatableData: Double {
+        get { progress }
+        set { progress = newValue }
+    }
 
     func body(content: Content) -> some View {
         content
-            .opacity(isShown ? 1 : 0)
-            .blur(radius: isShown ? 0 : 8)
-            .scaleEffect(isShown ? 1 : 1.04)
+            .environment(\.micMenuRevealBlur, 8 * (1 - progress))
+            .opacity(progress)
+            .scaleEffect(1 + 0.04 * (1 - progress))
     }
+}
+
+extension EnvironmentValues {
+    /// How blurred the mic menu cards' contents are mid-reveal
+    @Entry var micMenuRevealBlur: CGFloat = 0
 }
 
 extension AnyTransition {
     static var micMenuReveal: AnyTransition {
-        .modifier(active: MicMenuRevealEffect(isShown: false), identity: MicMenuRevealEffect(isShown: true))
+        .modifier(active: MicMenuRevealEffect(progress: 0), identity: MicMenuRevealEffect(progress: 1))
     }
 }

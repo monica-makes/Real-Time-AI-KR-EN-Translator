@@ -12,7 +12,7 @@ final class PartnerSearchLayoutTuning {
 
     static let defaultTitleDotsGap: CGFloat = 12   // title's last line to the dots
     static let defaultDotsBodyGap: CGFloat = 20    // dots to the body's first line
-    static let defaultDotSpacing: CGFloat = 11     // between the loading dots
+    static let defaultDotSpacing: CGFloat = 8      // between the loading dots
     static let defaultBodyLineSpacing: CGFloat = 5 // between the body's two lines (22pt line height at 17pt)
 
     /// nil follows the home screen's title top / card top
