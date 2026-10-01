@@ -1348,8 +1348,10 @@ struct LookingForPartnerScreen: View {
 
     @State private var hasProceeded = false
 
-    // DEBUG: Toggle for simulator testing - remove before shipping
+    #if DEBUG
+    /// Headphones override for simulator testing (the 🎧 button)
     @State private var debugOverride: Bool? = nil
+    #endif
 
     var body: some View {
         ZStack {
@@ -1389,13 +1391,8 @@ struct LookingForPartnerScreen: View {
                     .padding(.top, 24)
 
                 // Headphone status card with real-time detection
-                HeadphoneStatusCard(
-                    onConnectionChange: { isConnected in
-                        handleConnectionChange(isConnected)
-                    },
-                    debugOverride: debugOverride
-                )
-                .padding(.top, 32)
+                headphoneStatusCard
+                    .padding(.top, 32)
 
                 Spacer()
             }
@@ -1417,7 +1414,8 @@ struct LookingForPartnerScreen: View {
                 Spacer()
             }
 
-            // DEBUG: Toggle button - remove before shipping
+            #if DEBUG
+            // Headphones override button for simulator testing
             VStack {
                 Spacer()
                 HStack {
@@ -1445,9 +1443,24 @@ struct LookingForPartnerScreen: View {
                     .padding(.bottom, 40)
                 }
             }
+            #endif
         }
     }
 
+    private var headphoneStatusCard: HeadphoneStatusCard {
+        let card = HeadphoneStatusCard(onConnectionChange: { isConnected in
+            handleConnectionChange(isConnected)
+        })
+        #if DEBUG
+        var overridden = card
+        overridden.debugOverride = debugOverride
+        return overridden
+        #else
+        return card
+        #endif
+    }
+
+    #if DEBUG
     private var debugStateLabel: String {
         switch debugOverride {
         case .none: return "AUTO"
@@ -1455,6 +1468,7 @@ struct LookingForPartnerScreen: View {
         case .some(false): return "OFF"
         }
     }
+    #endif
 
     private func handleConnectionChange(_ isConnected: Bool) {
         guard isConnected && !hasProceeded else { return }
@@ -1572,11 +1586,16 @@ struct HeadphoneStatusCard: View {
     @StateObject private var detector = HeadphoneDetector()
     var onConnectionChange: ((Bool) -> Void)?
 
-    // DEBUG: Override for simulator testing - remove before shipping
+    #if DEBUG
+    /// Headphones override for simulator testing
     var debugOverride: Bool? = nil
+    #endif
 
     private var isConnected: Bool {
-        debugOverride ?? detector.isConnected
+        #if DEBUG
+        if let debugOverride { return debugOverride }
+        #endif
+        return detector.isConnected
     }
 
     private func triggerHaptic() {

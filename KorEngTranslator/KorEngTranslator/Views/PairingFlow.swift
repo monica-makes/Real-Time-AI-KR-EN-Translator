@@ -2905,24 +2905,25 @@ struct LiveTranslationScreen: View {
     // Both sides of the conversation (my lines and the partner's), joined by the server's
     // segment id. The chat redesign will render all of it; for now the latest line is shown.
     @State private var conversation = ConversationLog()
+
+    #if DEBUG
     /// The scripted demo chat is playing (debug): the mic control shows its live, expanded state
     @State private var isDemoPlaying = false
-    #if DEBUG
     /// Who's talking in the reel's screen recording (LiveRecordingDemo), in place of the mic and captions
     @State private var demoVoice: VoiceActivity?
-    #endif
 
     // MARK: - Debug Mode State
     @State private var showDebugMenu: Bool = false
-    #if DEBUG
     @State private var selectedBubbleStyle: BubbleStyle = .launchDefault  // -orbStyle
-    #else
-    @State private var selectedBubbleStyle: BubbleStyle = .combination
-    #endif
     @State private var simulatedAudioLevel: CGFloat = 0.0
     @State private var isSimulatingSpeaking: Bool = false
     @State private var useSiriGlass: Bool = false          // New Siri-style glass look (debug toggle)
     @State private var debugOrbState: OrbState? = nil     // nil = Auto (follow real mic/playback state)
+    #else
+    // The orb: the Combination style
+    private let selectedBubbleStyle: BubbleStyle = .combination
+    private let useSiriGlass = false
+    #endif
 
     #if DEBUG
     @State private var debugLanguage: String? = nil  // Override language in debug mode
@@ -2970,11 +2971,25 @@ struct LiveTranslationScreen: View {
 
     // MARK: - Computed Properties
     private var effectiveAudioLevel: CGFloat {
-        showDebugMenu ? simulatedAudioLevel : audioLevel
+        #if DEBUG
+        if showDebugMenu { return simulatedAudioLevel }
+        #endif
+        return audioLevel
     }
 
     private var effectiveIsSpeaking: Bool {
-        showDebugMenu ? isSimulatingSpeaking : isSpeaking
+        #if DEBUG
+        if showDebugMenu { return isSimulatingSpeaking }
+        #endif
+        return isSpeaking
+    }
+
+    /// The mic is listening (or the debug panel is simulating it)
+    private var isMicRunning: Bool {
+        #if DEBUG
+        if showDebugMenu { return true }
+        #endif
+        return isSessionActive
     }
 
     /// What the orb should be doing right now.
@@ -2984,7 +2999,7 @@ struct LiveTranslationScreen: View {
         if let override = debugOrbState { return override }
         #endif
         if audioPlayback.isOutputActive { return .responding }   // translated speech is playing
-        if effectiveIsSpeaking && (isSessionActive || showDebugMenu) { return .listening }
+        if effectiveIsSpeaking && isMicRunning { return .listening }
         return .idle                                              // waiting / other person talking
     }
 
@@ -2996,11 +3011,20 @@ struct LiveTranslationScreen: View {
         return VoiceActivity.resolve(
             micLevel: effectiveAudioLevel,
             iAmSpeaking: effectiveIsSpeaking,
-            micRunning: isSessionActive || showDebugMenu,
+            micRunning: isMicRunning,
             myCaptionLive: conversation.liveCaptions[.me] != nil,
             partnerCaptionLive: conversation.liveCaptions[.partner] != nil,
             partnerAudioPlaying: audioPlayback.isOutputActive
         )
+    }
+
+    /// The mic control's session state; held live (expanded, as in a live conversation) while the
+    /// debug demo chat plays
+    private var micSessionBinding: Binding<Bool> {
+        #if DEBUG
+        if isDemoPlaying { return .constant(true) }
+        #endif
+        return $isSessionActive
     }
 
     /// Intensity the orb animates with (0...1). Debug slider when overriding, else live mic level.
@@ -3103,8 +3127,7 @@ struct LiveTranslationScreen: View {
             VStack {
                 Spacer()
                 MicButton(
-                    // Expanded, as in a live conversation, while the demo chat plays
-                    isSessionActive: isDemoPlaying ? .constant(true) : $isSessionActive,
+                    isSessionActive: micSessionBinding,
                     isPaused: isPaused,
                     isMenuOpen: isMicMenuOpen,
                     lift: isMicMenuOpen ? Self.micMenuLift : 0,
