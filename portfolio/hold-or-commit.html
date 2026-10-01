@@ -1,0 +1,707 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Hold or Commit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500&family=Geist+Mono:wght@400;500&family=Fraunces:ital,opsz,wght@1,9..144,300&family=Noto+Sans+KR:wght@400;500&display=swap">
+<style>
+/* One column, read top to bottom: pick a sentence, watch words arrive, see the gate decide, compare what each listener hears. */
+:root{
+  --bg:#FFFFFF;
+  --card:#ECECEA;
+  --ink:#161616;
+  --muted:#5B5B5B;
+  --label:#8A8A8A;
+  --hair:#E4E4E2;
+  --ghost:#BDBDBB;
+  --solid:#222222;
+  --on-solid:#FFFFFF;
+  --on-solid-dim:rgba(255,255,255,.62);
+  --accent:#FF7158;
+  --accent-ink:#D9472E;
+  --accent-fill:rgba(255,113,88,.07);
+  --radius:12px;
+  --sans:"Geist","Pretendard","Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif;
+  --mono:"Geist Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --serif:"Fraunces","GT Signifier",Georgia,serif;
+  --ease:cubic-bezier(.16,1,.3,1);
+  --dur:280ms;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#121211;--card:#222221;--ink:#EDEDEA;--muted:#A3A3A0;--label:#7E7E7B;--hair:#2B2B2A;--ghost:#4A4A48;
+    --solid:#EDEDEA;--on-solid:#121211;--on-solid-dim:rgba(18,18,17,.6);
+    --accent-ink:#FF8A74;--accent-fill:rgba(255,113,88,.10);color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#121211;--card:#222221;--ink:#EDEDEA;--muted:#A3A3A0;--label:#7E7E7B;--hair:#2B2B2A;--ghost:#4A4A48;
+  --solid:#EDEDEA;--on-solid:#121211;--on-solid-dim:rgba(18,18,17,.6);
+  --accent-ink:#FF8A74;--accent-fill:rgba(255,113,88,.10);color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.4;-webkit-font-smoothing:antialiased}
+button,input{font:inherit;color:inherit}
+button{background:none;border:0;padding:0;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.mono{font-family:var(--mono);font-size:11px;letter-spacing:.05em;text-transform:uppercase}
+
+.page{max-width:960px;margin:0 auto;padding:48px 24px 96px}
+.head{max-width:680px;margin-bottom:36px}
+.kicker{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--label);margin-bottom:10px}
+h1{font-size:32px;font-weight:500;letter-spacing:-.015em;margin:0 0 10px;text-wrap:balance}
+h2{font-size:22px;font-weight:500;letter-spacing:-.01em;margin:0 0 8px;text-wrap:balance}
+.lead{font-family:var(--serif);font-style:italic;font-weight:300;font-size:22px;line-height:1.3;margin:0}
+.p{color:var(--muted);max-width:620px;margin:14px 0 0}
+
+/* ---------- controls ---------- */
+.controls{display:grid;gap:12px;margin-bottom:28px}
+.ctl-row{display:grid;grid-template-columns:84px 1fr;align-items:center;gap:12px}
+.ctl-l{font-family:var(--mono);font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--label)}
+.seg,.chips{display:flex;flex-wrap:wrap;gap:6px}
+.seg{padding:4px;border-radius:999px;background:var(--card);width:max-content;max-width:100%}
+.pill{min-height:34px;padding:6px 14px;border-radius:999px;background:var(--card);font-size:14px;line-height:1.25;display:inline-flex;align-items:center;gap:8px;text-align:left;transition:background var(--dur) var(--ease),color var(--dur) var(--ease)}
+.seg .pill{background:transparent;min-height:32px}
+.pill .k{font-family:var(--sans);font-size:13px;opacity:.6}
+.pill[aria-pressed="true"]{background:var(--solid);color:var(--on-solid)}
+.pill:not([aria-pressed="true"]):hover{background:color-mix(in srgb,var(--card) 70%,var(--ghost))}
+.seg .pill:not([aria-pressed="true"]):hover{background:color-mix(in srgb,var(--card) 50%,var(--bg))}
+.ctl-row[hidden]{display:none}
+
+/* ---------- stage ---------- */
+.stage{border:1.5px solid var(--card);border-radius:20px;padding:24px}
+.stage-top{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+.col-label{font-size:15px;color:var(--label);margin:0}
+.col-label .mono{margin-left:8px}
+.transport{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.btn{height:34px;padding:0 14px;border-radius:999px;background:var(--card);font-size:14px;display:inline-flex;align-items:center;transition:background var(--dur) var(--ease)}
+.btn.primary{background:var(--solid);color:var(--on-solid)}
+.btn:disabled{opacity:.4;cursor:default}
+.hint{font-family:var(--mono);font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--label);margin-left:6px;font-variant-numeric:tabular-nums}
+
+.tokens{display:flex;flex-wrap:wrap;align-items:stretch;gap:8px;min-height:64px}
+.tok{position:relative;background:var(--card);border-radius:var(--radius);padding:9px 14px 8px;display:flex;flex-direction:column;gap:2px;min-width:52px;border:1.5px solid transparent;transition:background var(--dur) var(--ease),color var(--dur) var(--ease),opacity var(--dur) var(--ease),border-color var(--dur) var(--ease)}
+.tok .w{font-size:20px;line-height:1.3;white-space:nowrap}
+.tok .g{font-family:var(--mono);font-size:10.5px;letter-spacing:.03em;color:var(--label);white-space:nowrap}
+.tok.en .w{font-size:19px}
+.tok.future{opacity:.25}
+.tok.now{border-color:var(--ink)}
+.tok.held{background:var(--accent-fill);border:1.5px dashed var(--accent)}
+.tok.held .g{color:var(--accent-ink)}
+.tok.said{background:var(--solid);color:var(--on-solid)}
+.tok.said .g{color:var(--on-solid-dim)}
+.cut{align-self:stretch;display:flex;flex-direction:column;align-items:center;gap:4px;margin:0 -2px;opacity:0;transition:opacity var(--dur) var(--ease)}
+.cut.on{opacity:1}
+.cut i{flex:1;width:0;border-left:1.5px dashed var(--ghost)}
+.cut span{font-family:var(--mono);font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--label)}
+
+.gate{margin-top:18px;background:var(--card);border-radius:16px;padding:16px 18px;display:grid;grid-template-columns:120px 1fr;gap:6px 18px;align-items:start}
+.gate .gh{grid-column:1 / -1;font-family:var(--mono);font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--label)}
+.verdict{font-size:24px;font-weight:500;letter-spacing:-.01em;line-height:1.2;color:var(--label)}
+.verdict.hold{color:var(--accent-ink)}
+.verdict.commit{color:var(--ink)}
+.why{min-width:0}
+.why p{margin:0;font-size:16px}
+.why .rule{display:block;margin-top:6px;font-family:var(--mono);font-size:11px;letter-spacing:.03em;color:var(--label)}
+
+.lanes{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:22px}
+.lane{min-width:0}
+.lane .col-label{margin-bottom:10px}
+.said-list{display:flex;flex-direction:column;gap:8px}
+.line{border-radius:var(--radius);padding:12px 16px;background:var(--card);display:flex;flex-direction:column;gap:3px;animation:rise .38s var(--ease)}
+.line .src{font-size:14px;color:var(--muted)}
+.line .out{font-size:17px;line-height:1.35}
+.line .tag{font-family:var(--mono);font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--label);margin-top:3px}
+.lane.dari .line{background:var(--solid);color:var(--on-solid)}
+.lane.dari .line .src,.lane.dari .line .tag{color:var(--on-solid-dim)}
+.line.waiting{background:var(--accent-fill);border:1.5px dashed var(--accent);color:var(--ink);animation:none}
+.lane.dari .line.waiting{background:var(--accent-fill);color:var(--ink)}
+.lane.dari .line.waiting .src{color:var(--muted)}
+.lane.dari .line.waiting .tag{color:var(--accent-ink)}
+.line.quiet{background:transparent;border:1.5px dashed var(--ghost);color:var(--label);animation:none}
+.lane.dari .line.quiet{background:transparent;color:var(--label)}
+.mirror{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.mirror .tok{padding:6px 10px 5px;min-width:0}
+.mirror .tok .w{font-size:16px}
+.summary{font-size:15px;color:var(--muted);margin:0}
+@keyframes rise{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+.note{margin:22px 0 0;padding-top:16px;border-top:1px solid var(--hair);color:var(--muted);max-width:680px}
+
+.log{margin-top:28px}
+.log .col-label{margin-bottom:6px}
+.ln{display:grid;grid-template-columns:130px 88px 1fr;gap:12px;align-items:baseline;padding:8px 0;border-top:1px solid var(--hair);font-size:14px;color:var(--muted)}
+.ln .lw{color:var(--ink);font-size:15px}
+.ln b{font-family:var(--mono);font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;font-weight:500;color:var(--label)}
+.ln b.hold{color:var(--accent-ink)}
+.ln b.commit{color:var(--ink)}
+.ln.pending{opacity:.3}
+
+/* ---------- sandbox ---------- */
+.own{margin-top:64px;padding-top:36px;border-top:1px solid var(--hair)}
+.own .p{margin-top:6px}
+.field{margin-top:18px;display:flex;flex-direction:column;gap:10px}
+.field label{font-family:var(--mono);font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--label)}
+.field input{width:100%;height:52px;border-radius:var(--radius);border:1.5px solid var(--card);background:var(--bg);padding:0 16px;font-size:19px}
+.field input:focus{border-color:var(--ink);outline:none}
+.examples{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.examples .ctl-l{margin-right:4px}
+.own-tokens{margin-top:18px}
+.own-tokens .tok .g{white-space:normal}
+.own-tokens .tok .g.hold{color:var(--accent-ink)}
+.own-tokens .tok .g.commit{color:var(--ink)}
+.segs{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:18px}
+.segs .col-label{margin-bottom:8px}
+.seg-list{display:flex;flex-wrap:wrap;gap:6px}
+.chunk{border-radius:10px;padding:7px 12px;background:var(--card);font-size:16px}
+.segs .dari .chunk{background:var(--solid);color:var(--on-solid)}
+.empty{color:var(--label);font-size:14px}
+
+.foot{margin-top:56px;font-size:13px;color:var(--label);max-width:680px}
+
+@media (max-width:720px){
+  .page{padding:32px 16px 72px}
+  h1{font-size:27px}
+  .lead{font-size:19px}
+  .ctl-row{grid-template-columns:1fr;gap:6px}
+  .stage{padding:16px;border-radius:16px}
+  .gate{grid-template-columns:1fr}
+  .lanes,.segs{grid-template-columns:1fr}
+  .ln{grid-template-columns:96px 70px 1fr;gap:8px}
+  .tok .w{font-size:18px}
+}
+@media (prefers-reduced-motion: reduce){
+  *{transition:none !important;animation:none !important}
+}
+</style>
+</head>
+<body>
+
+<main class="page">
+  <header class="head">
+    <div class="kicker">Dari · try the gate</div>
+    <h1>Hold or commit</h1>
+    <p class="lead">Korean puts the verb last. Pick a sentence and watch Dari decide, word by word, whether it's safe to speak yet.</p>
+    <p class="p">Spoken audio can't be taken back. Before a Korean clause reaches the translator, a rule-based gate reads how it ends and either sends it or holds it for more. The gate on this page is the app's own rules, running in your browser.</p>
+  </header>
+
+  <section class="controls" aria-label="Choose a sentence">
+    <div class="ctl-row">
+      <span class="ctl-l" id="dir-l">Speaker</span>
+      <div class="seg" id="dir" role="group" aria-labelledby="dir-l">
+        <button class="pill" id="dir-ko" data-dir="ko" aria-pressed="true"><span class="k">한</span>Korean speaker</button>
+        <button class="pill" id="dir-en" data-dir="en" aria-pressed="false"><span class="k">EN</span>English speaker</button>
+      </div>
+    </div>
+    <div class="ctl-row">
+      <span class="ctl-l" id="pre-l">Sentence</span>
+      <div class="chips" id="presets" role="group" aria-labelledby="pre-l"></div>
+    </div>
+    <div class="ctl-row" id="ending-row">
+      <span class="ctl-l" id="end-l">Ending</span>
+      <div class="chips" id="endings" role="group" aria-labelledby="end-l"></div>
+    </div>
+  </section>
+
+  <section class="stage" aria-label="The gate, running">
+    <div class="stage-top">
+      <p class="col-label">Arriving <span class="mono" id="arr-sub">speech to text, word by word</span></p>
+      <div class="transport">
+        <button class="btn primary" id="play">Play</button>
+        <button class="btn" id="step">Step</button>
+        <button class="btn" id="reset">Reset</button>
+        <span class="hint" id="hint"></span>
+      </div>
+    </div>
+    <div class="tokens" id="tokens"></div>
+
+    <div class="gate">
+      <div class="gh" id="gate-h">The gate · commit or hold · rule-based, before the translator</div>
+      <div class="verdict" id="verdict" aria-live="polite">Listening</div>
+      <div class="why"><p id="why"></p><span class="rule" id="rule"></span></div>
+    </div>
+
+    <div class="lanes">
+      <div class="lane" id="lane-a">
+        <p class="col-label" id="lane-a-h"></p>
+        <div id="lane-a-body"></div>
+      </div>
+      <div class="lane dari" id="lane-b">
+        <p class="col-label" id="lane-b-h"></p>
+        <div class="said-list" id="lane-b-body"></div>
+      </div>
+    </div>
+
+    <p class="note" id="note"></p>
+
+    <div class="log">
+      <p class="col-label">Every decision <span class="mono">one line per word</span></p>
+      <div id="log"></div>
+    </div>
+  </section>
+
+  <section class="own" aria-labelledby="own-h">
+    <h2 id="own-h">Type your own Korean</h2>
+    <p class="p">The same rules run as you type. Translation happens in the app, so this shows only what the gate would send, and when.</p>
+    <div class="field">
+      <label for="own-input">Korean, words separated by spaces</label>
+      <input id="own-input" type="text" lang="ko" autocomplete="off" spellcheck="false" value="비가 오는데 우산이 없어요">
+      <div class="examples" id="own-examples"><span class="ctl-l">Try</span></div>
+    </div>
+    <div class="tokens own-tokens" id="own-tokens"></div>
+    <div class="segs">
+      <div class="dari"><p class="col-label">Dari sends <span class="mono">one card per line spoken</span></p><div class="seg-list" id="own-dari"></div></div>
+      <div><p class="col-label">Without the gate</p><div class="seg-list" id="own-naive"></div></div>
+    </div>
+  </section>
+
+  <p class="foot">Pacing is for reading, not a latency claim. The gate is ported line for line from the app's Python and checked against it. Translations were logged from the app's translator on 30 September 2026 and are replayed here, fragments included, exactly as they came back.</p>
+</main>
+
+<script>
+/* Dari's ko_to_en gate, ported line for line from src/korean/patterns.py,
+   src/pipelines/kr_to_en/clause_detector.py and classifier.py */
+const Gate = (() => {
+  const SENTENCE_FINAL = ["습니다","입니다","ㅂ니다","니다","어요","아요","여요","해요","거든요","네요","군요","죠","어","아","여","해","다","했다","였다","었다","요"];
+  const QUESTION_MARKERS = ["습니까","입니까","합니까","을까요","ㄹ까요","까요","나요","가요","니","냐"];
+  const CLAUSE_CONNECTORS = ["고","서","아서","어서","면","으면","지만","니까","으니까","는데","려고","으려고"];
+  const MODIFIERS = ["는","은","ㄴ","을","ㄹ"];
+  const ACTION_VERBS = ["가","오","먹","마시","자","일어나","앉","서","걷","뛰","하","사","팔","쓰","읽","만들","타","내리","열","닫","놓","넣","빼","던지","잡","치","때리","울","웃","노래하","춤추","일하","공부하","운동하","요리하","청소하","씻"];
+  const PERCEPTION_VERBS = ["보","듣","만나","느끼","생각하","알","모르","믿","의심하","기억하","잊","이해하","깨닫","발견하","인식하"];
+  const PAST_TENSE_MARKERS = ["었","았","했","였"];
+  const AFFIRMATIONS = new Set(["네","예","응","어","그래","좋아","알았어","알겠어","아니","아니요","아뇨","싫어","맞아","맞아요","그래요","네,","예,","응,","아니,","아니요,"]);
+  const SENTENCE_PUNCTUATION = [".","?","!"];
+  // Python's sorted(key=len, reverse=True) is stable: longest first, ties keep list order
+  const byLen = a => a.map((s, i) => [s, i]).sort((x, y) => y[0].length - x[0].length || x[1] - y[1]).map(x => x[0]);
+  const FINAL_S = byLen(SENTENCE_FINAL), QUESTION_S = byLen(QUESTION_MARKERS), MOD_S = byLen(MODIFIERS), CONN_S = byLen(CLAUSE_CONNECTORS);
+  const chars = s => Array.from(s);
+  const lastN = (s, n) => chars(s).slice(-n).join("");
+  const len = s => chars(s).length;
+  const findVerb = (text, list) => list.find(v => lastN(text.trimEnd(), 10).includes(v));
+
+  function classify(clauseText, connector, trigger) {
+    const text = clauseText.replace(/ /g, "");
+    const R = (safe, rule, extra) => Object.assign({ decision: safe ? "commit" : "hold", rule }, extra);
+    if (AFFIRMATIONS.has(text.trim())) return R(true, "affirmation");
+    if (["timeout", "overflow", "force"].includes(trigger)) return R(true, trigger);
+    if (trigger === "sentence_end") return R(true, "sentence_end");
+    if (trigger === "pause") return R(true, "pause");
+    if (connector == null) return R(false, "no_signal");
+    if (MODIFIERS.includes(connector)) return R(false, "modifier");
+    if (connector === "고") {
+      const past = PAST_TENSE_MARKERS.find(m => text.includes(m));
+      if (past) return R(true, "past_go", { verb: past });
+      const pv = findVerb(text, PERCEPTION_VERBS);
+      if (pv) return R(false, "perception_go", { verb: pv });
+      const av = findVerb(text, ACTION_VERBS);
+      if (av) return R(true, "action_go", { verb: av });
+      if (len(text) > 30) return R(true, "long_go");
+      return R(false, "short_go");
+    }
+    if (["서", "아서", "어서"].includes(connector)) return R(false, "seo");
+    if (["면", "으면"].includes(connector)) return R(true, "myeon");
+    if (connector === "지만") return R(true, "jiman");
+    if (["니까", "으니까"].includes(connector)) return R(true, "nikka");
+    if (connector === "는데") return len(text) > 20 ? R(true, "neunde_long") : R(false, "neunde_short");
+    if (["려고", "으려고"].includes(connector)) return R(false, "ryeogo");
+    return R(false, "default_wait");
+  }
+
+  // KoreanClauseDetector.add_word for words from one streaming result: they share a
+  // timestamp, so the pause, timeout and overflow checks don't fire
+  function boundary(buffer) {
+    const t = buffer.join("");
+    for (const e of FINAL_S) if (t.endsWith(e)) return { trigger: "sentence_end", connector: e };
+    for (const e of QUESTION_S) if (t.endsWith(e)) return { trigger: "sentence_end", connector: e, question: true };
+    for (const e of MOD_S) if (t.endsWith(e)) return { trigger: "connector", connector: e };
+    for (const e of CONN_S) if (t.endsWith(e)) return { trigger: "connector", connector: e };
+    return null;
+  }
+
+  // gate=false commits every boundary the clause detector finds
+  function runKorean(sentence, gate = true) {
+    const words = sentence.trim().split(/\s+/).filter(Boolean);
+    let buf = [], idx = [];
+    const take = () => { const seg = { text: buf.join(" "), words: idx.slice() }; buf = []; idx = []; return seg; };
+    const steps = words.map((w, i) => {
+      buf.push(w); idx.push(i);
+      const step = { word: w, i, events: [] };
+      const b = boundary(buf);
+      if (b) {
+        const clause = buf.join(" ");
+        const c = gate ? classify(clause, b.connector, b.trigger) : { decision: "commit", rule: "no_gate" };
+        const ev = Object.assign({ clause }, b, c);
+        if (c.decision === "commit") ev.segment = take(); else ev.held = idx.slice();
+        step.events.push(ev);
+      }
+      if (SENTENCE_PUNCTUATION.some(p => w.endsWith(p)) && buf.length) {
+        step.events.push({ clause: buf.join(" "), trigger: "force", decision: "commit", rule: "punctuation", segment: take() });
+      }
+      return step;
+    });
+    const end = buf.length ? { clause: buf.join(" "), trigger: "force", decision: "commit", rule: "end_of_speech", segment: take() } : null;
+    return { words, steps, end };
+  }
+
+  // EnglishSentenceDetector: commits on . ! ? (or a pause), no hold step
+  function runEnglish(sentence) {
+    const words = sentence.trim().split(/\s+/).filter(Boolean);
+    let buf = [], idx = [];
+    const steps = words.map((w, i) => {
+      buf.push(w); idx.push(i);
+      const step = { word: w, i, events: [] };
+      const p = SENTENCE_PUNCTUATION.find(p => w.trimEnd().endsWith(p));
+      if (p) {
+        step.events.push({ clause: buf.join(" "), trigger: "punctuation", connector: p, decision: "commit", rule: "en_punctuation", segment: { text: buf.join(" "), words: idx.slice() } });
+        buf = []; idx = [];
+      }
+      return step;
+    });
+    const end = buf.length ? { clause: buf.join(" "), decision: "commit", rule: "end_of_speech", segment: { text: buf.join(" "), words: idx.slice() } } : null;
+    return { words, steps, end };
+  }
+
+  return { classify, runKorean, runEnglish };
+})();
+
+/* Logged from src/services/translator.py (Claude, the app's prompts, a fresh
+   conversation context per lane), 30 Sep 2026. Replayed verbatim. */
+const PRESETS = [
+  { id: "watch", label: "Watch that movie", key: "보고",
+    ko: { words: ["저는", "그", "영화를", "보고"], gloss: ["I · topic", "that", "movie · object", "see + -고"],
+      endings: [
+        { id: "neg", label: "싶지 않아요", means: "don't want to", words: ["싶지", "않아요"], gloss: ["want + -지", "not · ending"],
+          dari: ["I don't want to see that movie."],
+          naive: ["\"I...\" or \"As for me...\"", "\"After watching that movie...\"", "\"...I don't want to.\""] },
+        { id: "want", label: "싶어요", means: "want to", words: ["싶어요"], gloss: ["want · ending"],
+          dari: ["I want to see that movie."], naive: ["I", "After watching that movie,", "I'd like to."] },
+        { id: "prog", label: "있어요", means: "am watching", words: ["있어요"], gloss: ["am · ending"],
+          dari: ["I'm watching that movie."], naive: ["I am", "After watching that movie", "I'm watching it"] },
+        { id: "came", label: "왔어요", means: "went and saw", words: ["왔어요"], gloss: ["came · ending"],
+          dari: ["I went and saw that movie."], naive: ["I am", "After watching that movie,", "I came back."] },
+        { id: "cried", label: "울었어요", means: "cried", words: ["울었어요"], gloss: ["cried · ending"],
+          dari: ["I cried when I watched that movie."], naive: ["I am", "After watching that movie,", "I cried."] },
+      ],
+      note: "Nothing before the ending says which sentence this is. After 보 (see), -고 can turn into \"want to\", \"am watching\", \"went and saw\" or \"cried\". Try the other endings: the eager lane always says \"After watching that movie\" first." },
+    en: { text: "I don't want to watch that movie.", out: "그 영화는 보기 싫어요.", mirror: "neg",
+      note: "\"Don't want\" arrives by the second word. With the verb this early there's nothing to hold for, so the English lane only waits for the sentence to end." } },
+  { id: "regret", label: "Meeting that person", key: "만나서",
+    ko: { words: ["그", "사람을", "만나서", "정말", "후회했어요"], gloss: ["that", "person · object", "meet + -서", "really", "regretted · ending"],
+      dari: ["I really regretted meeting that person."],
+      naive: ["That person (object) — *the sentence seems incomplete.*", "Nice to meet (you)...", "I really regretted it."],
+      note: "-서 joins a cause to whatever follows, and what follows decides the meaning. Sent on its own, 만나서 came back as \"Nice to meet (you)\", one line before \"I really regretted it.\"" },
+    en: { text: "I really regretted meeting that person.", out: "그 사람을 만난 걸 정말 후회했어요.",
+      note: "\"Regretted\" comes before the who and the what. English commits at the period, with no hold step." } },
+  { id: "food", label: "The food I like", key: "좋아하는",
+    ko: { words: ["제가", "좋아하는", "음식은", "김치예요"], gloss: ["I · subject", "like + -는", "food · topic", "kimchi · is"],
+      dari: ["My favorite food is kimchi."],
+      naive: ["The one I like / that I like", "food is...", "It's kimchi."],
+      note: "-는 turns 좋아하 (like) into a description, so a noun is still coming. Without the gate, \"the food I like\" is split across three spoken lines." },
+    en: { text: "The food I like is kimchi.", out: "제가 좋아하는 음식은 김치예요.",
+      note: "English names the noun first and describes it after, so no half-sentence is left waiting for its noun." } },
+  { id: "rain", label: "If it rains tomorrow", key: "오면",
+    ko: { words: ["내일", "비가", "오면", "안", "갈", "거예요"], gloss: ["tomorrow", "rain · subject", "come + -면 · if", "not", "go", "will · ending"],
+      dari: ["If it rains tomorrow...", "I won't go."],
+      naive: ["If it rains tomorrow", "I won't go."],
+      note: "-면 closes a condition, and \"If it rains tomorrow\" is safe to say on its own, so Dari commits early. The gate holds only when the ending says to." },
+    en: { text: "If it rains tomorrow, I won't go.", out: "내일 비가 오면 안 가요.",
+      note: "Here the English lane is the slower one. A comma doesn't end a sentence, so it waits for the period, while the Korean lane spoke \"If it rains tomorrow\" as soon as -면 arrived." } },
+];
+
+const VERB_GLOSS = { "보": "see", "듣": "hear", "만나": "meet", "느끼": "feel", "생각하": "think", "알": "know", "모르": "not know", "믿": "believe", "기억하": "remember", "잊": "forget", "이해하": "understand" };
+
+function explain(ev) {
+  const c = ev.connector;
+  switch (ev.rule) {
+    case "sentence_end": return ev.question
+      ? [`A question ending, -${c}. The clause is complete.`, "question ending → commit"]
+      : [`A sentence ending, -${c}. The clause is complete.`, "sentence ending → commit"];
+    case "modifier": return [`Ends in -${c}, which can describe a noun that hasn't arrived yet. Saying it now could split the phrase.`, `modifier (-는 -은 -을) → hold`];
+    case "perception_go": return [`${ev.verb}${VERB_GLOSS[ev.verb] ? ` (${VERB_GLOSS[ev.verb]})` : ""} + -고. After a verb of seeing, hearing or meeting, -고 often turns into "want to" or a feeling.`, "perception verb + -고 → hold"];
+    case "action_go": return ["An action verb + -고 usually closes a finished step.", "action verb + -고 → commit"];
+    case "past_go": return ["Past tense + -고: the first action is done.", "past tense + -고 → commit"];
+    case "long_go": return ["-고 after a long clause is usually a finished step.", "long clause + -고 → commit"];
+    case "short_go": return ["-고 after a short clause needs what follows.", "short clause + -고 → hold"];
+    case "seo": return [`-${c} joins a cause to whatever follows, and what follows decides the meaning.`, "-서 → hold"];
+    case "myeon": return [`-${c} closes a condition ("if…"), which is safe to say on its own.`, "-면 → commit"];
+    case "jiman": return ["-지만 (\"but\") leaves a first half that stands on its own.", "-지만 → commit"];
+    case "nikka": return [`-${c} ("because") closes the reason.`, "-니까 → commit"];
+    case "neunde_short": return ["-는데 sets up background, and a short one needs what follows.", "short clause + -는데 → hold"];
+    case "neunde_long": return ["-는데 after a long clause can stand on its own.", "long clause + -는데 → commit"];
+    case "ryeogo": return [`-${c} ("in order to") isn't finished until the goal arrives.`, "-려고 → hold"];
+    case "affirmation": return ["A short answer is complete on its own.", "short answer → commit"];
+    case "punctuation": return ["Punctuation closes the sentence.", "punctuation → commit"];
+    case "end_of_speech": return ["The speaker stopped, so anything still held is sent.", "end of speech → commit"];
+    case "en_punctuation": return [`The sentence ended (${c}).`, "sentence detector · punctuation → commit"];
+    default: return ["No clear signal yet.", "default → hold"];
+  }
+}
+
+/* ---------- state ---------- */
+const $ = id => document.getElementById(id);
+const S = { dir: "ko", preset: "watch", ending: "neg", pos: 0, timer: null, run: null };
+const STEP_MS = 850;
+
+function current() {
+  const p = PRESETS.find(p => p.id === S.preset);
+  if (S.dir === "en") {
+    const mirror = koSentence(p, p.en.mirror || null);
+    return { p, words: p.en.text.split(" "), gloss: null, gate: Gate.runEnglish(p.en.text), mirror, out: [p.en.out], note: p.en.note };
+  }
+  const k = koSentence(p, S.ending);
+  return { p, words: k.words, gloss: k.gloss, gate: Gate.runKorean(k.words.join(" "), true), naive: Gate.runKorean(k.words.join(" "), false), out: k.dari, naiveOut: k.naive, note: p.ko.note };
+}
+function koSentence(p, endingId) {
+  if (!p.ko.endings) return { words: p.ko.words, gloss: p.ko.gloss, dari: p.ko.dari, naive: p.ko.naive };
+  const e = p.ko.endings.find(e => e.id === endingId) || p.ko.endings[0];
+  return { words: p.ko.words.concat(e.words), gloss: p.ko.gloss.concat(e.gloss), dari: e.dari, naive: e.naive };
+}
+
+// Walk the run to `pos` words: which words are held, which were said, and the segments so far
+function walk(run, pos) {
+  const said = new Set(), segs = [], held = new Set();
+  let pending = [], last = null;
+  for (let s = 0; s < pos; s++) {
+    const st = run.steps[s];
+    pending.push(st.i);
+    for (const ev of st.events) {
+      if (ev.segment) { ev.segment.words.forEach(i => said.add(i)); segs.push(ev.segment); pending = []; held.clear(); }
+      else if (ev.held) ev.held.forEach(i => held.add(i));
+    }
+    last = st;
+  }
+  if (pos === run.steps.length && run.end) {
+    run.end.segment.words.forEach(i => said.add(i)); segs.push(run.end.segment); pending = []; held.clear();
+  }
+  return { said, segs, held, pending, last };
+}
+
+/* ---------- render ---------- */
+function el(tag, cls, text) { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; }
+
+function renderControls() {
+  document.querySelectorAll("#dir .pill").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.dir === S.dir)));
+  const pre = $("presets"); pre.textContent = "";
+  PRESETS.forEach(p => {
+    const b = el("button", "pill"); b.type = "button"; b.id = "pre-" + p.id;
+    b.setAttribute("aria-pressed", String(p.id === S.preset));
+    if (S.dir === "ko") b.append(el("span", "k", p.key));
+    b.append(p.label);
+    b.onclick = () => { S.preset = p.id; select(); };
+    pre.append(b);
+  });
+  const p = PRESETS.find(p => p.id === S.preset);
+  const showEnd = S.dir === "ko" && !!p.ko.endings;
+  $("ending-row").hidden = !showEnd;
+  const endBox = $("endings"); endBox.textContent = "";
+  if (showEnd) p.ko.endings.forEach(e => {
+    const b = el("button", "pill"); b.type = "button"; b.id = "end-" + e.id;
+    b.setAttribute("aria-pressed", String(e.id === S.ending));
+    b.append(el("span", "k", e.label), e.means);
+    b.onclick = () => { S.ending = e.id; select(); };
+    endBox.append(b);
+  });
+}
+
+function renderStage() {
+  const C = S.run, n = C.words.length, pos = S.pos;
+  const W = walk(C.gate, pos);
+  const naiveCuts = new Set();
+  if (C.naive) {
+    const NW = walk(C.naive, pos);
+    NW.segs.forEach(seg => { const lastI = seg.words[seg.words.length - 1]; if (lastI < n - 1 && !W.said.has(lastI)) naiveCuts.add(lastI); });
+    C._naiveWalk = NW;
+  }
+
+  // tokens
+  const box = $("tokens"); box.textContent = "";
+  C.words.forEach((w, i) => {
+    const t = el("div", "tok" + (S.dir === "en" ? " en" : ""));
+    t.lang = S.dir;
+    t.append(el("span", "w", w));
+    if (C.gloss) t.append(el("span", "g", C.gloss[i]));
+    if (i >= pos) t.classList.add("future");
+    else if (W.said.has(i)) t.classList.add("said");
+    else if (W.held.has(i)) t.classList.add("held");
+    if (i === pos - 1 && pos < n) t.classList.add("now");
+    box.append(t);
+    if (C.naive && i < n - 1) {
+      const cut = el("div", "cut" + (naiveCuts.has(i) ? " on" : "")); cut.setAttribute("aria-hidden", "true");
+      cut.append(el("i"), el("span", null, "cut"));
+      if (naiveCuts.has(i)) box.append(cut);
+    }
+  });
+  $("hint").textContent = `Word ${pos} of ${n}`;
+  $("arr-sub").textContent = S.dir === "ko" ? "Korean speech to text, word by word" : "English speech to text, word by word";
+
+  // gate
+  const verdict = $("verdict"), why = $("why"), rule = $("rule");
+  $("gate-h").textContent = S.dir === "ko"
+    ? "The gate · commit or hold · rule-based, before the translator"
+    : "English → Korean · sentence detector · no hold step";
+  verdict.className = "verdict";
+  const lastEv = W.last && W.last.events.length ? W.last.events[W.last.events.length - 1] : null;
+  const endEv = pos === n && C.gate.end ? C.gate.end : null;
+  const ev = endEv || lastEv;
+  if (!W.last) {
+    verdict.textContent = "Listening";
+    why.textContent = S.dir === "ko" ? "Press Play, or Step through one word at a time." : "Press Play. This direction has no hold step.";
+    rule.textContent = "";
+  } else if (ev) {
+    const [w, r] = explain(ev);
+    verdict.textContent = ev.decision === "hold" ? "Hold" : "Commit";
+    verdict.classList.add(ev.decision);
+    why.textContent = `${W.last.word} · ${w}`;
+    rule.textContent = "rule · " + r;
+  } else {
+    verdict.textContent = S.dir === "ko" && W.held.size ? "Holding" : "Listening";
+    if (S.dir === "ko" && W.held.size) verdict.classList.add("hold");
+    why.textContent = S.dir === "ko"
+      ? `${W.last.word} · No clause ending yet. ${W.held.size ? "Still holding, still listening." : "Keep listening."}`
+      : `${W.last.word} · Waiting for the sentence to end.`;
+    rule.textContent = S.dir === "ko" ? "clause detector · no boundary" : "sentence detector · commits on . ! ? or a pause over 500 ms";
+  }
+
+  // lanes
+  const aH = $("lane-a-h"), aB = $("lane-a-body"), bH = $("lane-b-h"), bB = $("lane-b-body");
+  aH.textContent = ""; aB.textContent = ""; bH.textContent = ""; bB.textContent = "";
+  if (S.dir === "ko") {
+    aH.append("Without the gate ", el("span", "mono", "every clause break is spoken"));
+    bH.append("Dari ", el("span", "mono", "ko_to_en · commit or hold"));
+    const list = el("div", "said-list");
+    const NW = C._naiveWalk;
+    NW.segs.forEach((seg, k) => list.append(line(seg.text, C.naiveOut[k], `Spoken · line ${k + 1}`)));
+    if (NW.pending.length && pos < n) list.append(line(NW.pending.map(i => C.words[i]).join(" "), null, "Listening", "quiet"));
+    if (!pos) list.append(line(null, "Nothing yet", null, "quiet"));
+    aB.append(list);
+    W.segs.forEach((seg, k) => bB.append(line(seg.text, C.out[k], k === 0 && W.segs.length === 1 && pos === n ? "Spoken once · after the ending" : `Spoken · line ${k + 1}`)));
+    if (W.held.size) bB.append(line(W.pending.map(i => C.words[i]).join(" "), "Holding · nothing said yet", "Waiting for the ending", "waiting"));
+    else if (W.pending.length && pos < n) bB.append(line(W.pending.map(i => C.words[i]).join(" "), null, "Listening", "quiet"));
+    if (!pos) bB.append(line(null, "Nothing yet", null, "quiet"));
+  } else {
+    aH.append("Same sentence, Korean speaker ", el("span", "mono", "for comparison"));
+    const m = C.mirror, mr = Gate.runKorean(m.words.join(" "), true);
+    const row = el("div", "mirror");
+    const holds = [], commits = [];
+    mr.steps.forEach(st => st.events.forEach(e => (e.decision === "hold" ? holds : commits).push(st)));
+    m.words.forEach((w, i) => {
+      const t = el("div", "tok" + (holds.some(s => s.i === i) ? " held" : commits.some(s => s.i === i) ? " said" : ""));
+      t.lang = "ko"; t.append(el("span", "w", w)); row.append(t);
+    });
+    aB.append(row);
+    const listW = a => a.map(s => s.word).join(" and ");
+    let sum = holds.length ? `Held at ${listW(holds)}. ` : "";
+    sum += commits.length === 1
+      ? `Spoke once, at ${commits[0].word}, word ${commits[0].i + 1} of ${m.words.length}.`
+      : `Spoke ${commits.length} times: ${commits.map(s => `at ${s.word} (word ${s.i + 1})`).join(", ")}.`;
+    aB.append(el("p", "summary", sum));
+    bH.append("Dari ", el("span", "mono", "en_to_ko · no hold step"));
+    W.segs.forEach((seg, k) => { const l = line(seg.text, C.out[k], "Spoken · at the period"); l.querySelector(".out").lang = "ko"; bB.append(l); });
+    if (W.pending.length) bB.append(line(W.pending.map(i => C.words[i]).join(" "), null, "Listening", "quiet"));
+    if (!pos) bB.append(line(null, "Nothing yet", null, "quiet"));
+  }
+  $("note").textContent = C.note;
+
+  // log
+  const log = $("log"); log.textContent = "";
+  C.gate.steps.forEach((st, s) => {
+    const r = el("div", "ln" + (s >= pos ? " pending" : ""));
+    const e = st.events[st.events.length - 1];
+    const lw = el("span", "lw", st.word); lw.lang = S.dir;
+    let tag, cls, text;
+    if (e) { const [w, rl] = explain(e); tag = e.decision; cls = e.decision; text = rl; }
+    else { tag = S.dir === "ko" ? "listen" : "listen"; cls = ""; text = S.dir === "ko" ? "no clause ending" : "no hold step · waiting for . ! ?"; }
+    r.append(lw, el("b", cls, tag), el("span", null, text));
+    log.append(r);
+  });
+
+  $("play").textContent = S.timer ? "Pause" : pos >= n ? "Replay" : "Play";
+  $("step").disabled = pos >= n;
+}
+
+function line(src, out, tag, extra) {
+  const l = el("div", "line" + (extra ? " " + extra : ""));
+  if (src) { const s = el("span", "src", src); s.lang = S.dir; l.append(s); }
+  if (out) l.append(el("span", "out", out));
+  if (tag) l.append(el("span", "tag", tag));
+  return l;
+}
+
+/* ---------- transport ---------- */
+function stop() { clearInterval(S.timer); S.timer = null; }
+function advance() {
+  if (S.pos >= S.run.words.length) { stop(); renderStage(); return; }
+  S.pos++; if (S.pos >= S.run.words.length) stop();
+  renderStage();
+}
+function play() {
+  if (S.timer) { stop(); renderStage(); return; }
+  if (S.pos >= S.run.words.length) S.pos = 0;
+  S.timer = setInterval(advance, STEP_MS);
+  advance();
+}
+function select(autoplay = true) {
+  stop();
+  S.run = current();
+  renderControls();
+  S.pos = 0;
+  if (autoplay) play(); else { S.pos = S.run.words.length; renderStage(); }
+}
+$("play").onclick = play;
+$("step").onclick = () => { stop(); advance(); };
+$("reset").onclick = () => { stop(); S.pos = 0; renderStage(); };
+document.querySelectorAll("#dir .pill").forEach(b => b.onclick = () => { if (S.dir !== b.dataset.dir) { S.dir = b.dataset.dir; select(); } });
+
+/* ---------- type your own ---------- */
+const OWN_EXAMPLES = ["비가 오는데 우산이 없어요", "시간이 있으면 같이 가요", "배가 고파서 먼저 먹을게요", "피곤하지만 괜찮아요"];
+function renderOwn() {
+  const text = $("own-input").value;
+  const box = $("own-tokens"), d = $("own-dari"), nv = $("own-naive");
+  box.textContent = ""; d.textContent = ""; nv.textContent = "";
+  if (!text.trim()) { d.append(el("span", "empty", "Type a sentence above.")); return; }
+  const run = Gate.runKorean(text, true), naive = Gate.runKorean(text, false);
+  const W = walk(run, run.steps.length);
+  run.steps.forEach(st => {
+    const t = el("div", "tok said"); t.lang = "ko";
+    t.append(el("span", "w", st.word));
+    const e = st.events[st.events.length - 1];
+    if (e) { const g = el("span", "g", `${e.decision} · ${explain(e)[1].split(" → ")[0]}`); t.append(g); }
+    else t.append(el("span", "g", "listen"));
+    if (e && e.decision === "hold") { t.classList.remove("said"); t.classList.add("held"); }
+    box.append(t);
+  });
+  if (run.end) {
+    const t = el("div", "tok"); t.append(el("span", "w", "·"), el("span", "g", "end of speech · commit")); box.append(t);
+  }
+  W.segs.forEach(s => { const c = el("span", "chunk", s.text); c.lang = "ko"; d.append(c); });
+  walk(naive, naive.steps.length).segs.forEach(s => { const c = el("span", "chunk", s.text); c.lang = "ko"; nv.append(c); });
+}
+OWN_EXAMPLES.forEach((x, k) => {
+  const b = el("button", "pill", x); b.type = "button"; b.id = "own-ex-" + k; b.lang = "ko";
+  b.onclick = () => { $("own-input").value = x; renderOwn(); };
+  $("own-examples").append(b);
+});
+$("own-input").addEventListener("input", renderOwn);
+
+// Open at rest: the first sentence, fully played
+select(false);
+renderOwn();
+
+// Embedded on the portfolio (same origin): follow the site's theme, and report the
+// page height so the frame grows to fit instead of scrolling
+if (window.parent !== window) {
+  try {
+    const host = parent.document.documentElement;
+    const sync = () => { const t = host.dataset.theme; if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; };
+    sync();
+    new MutationObserver(sync).observe(host, { attributes: true, attributeFilter: ["data-theme"] });
+  } catch (e) { /* cross-origin parent: keep the viewer's own theme */ }
+  const post = () => parent.postMessage({ type: "hold-or-commit:height", height: Math.ceil(document.body.getBoundingClientRect().height) }, location.origin);
+  new ResizeObserver(post).observe(document.body);
+}
+</script>
+</body>
+</html>
