@@ -17,11 +17,7 @@ enum GradientAtmosphere {
     static let storageKey = "debugGradientAtmosphere"
 
     static var isEnabled: Bool {
-        #if DEBUG
-        return UserDefaults.standard.object(forKey: storageKey) as? Bool ?? true
-        #else
         return true
-        #endif
     }
 
     /// The marigold pool above the cards: AppColors.gradientAmber turned 4% toward the original
@@ -105,11 +101,7 @@ enum GradientAtmosphere {
 
 /// The home gradient: the classic orb wrapped in the atmosphere (or on its own, from the Debug picker).
 struct GradientOrb: View {
-    #if DEBUG
-    @AppStorage(GradientAtmosphere.storageKey) private var atmosphere = true
-    #else
     private let atmosphere = true
-    #endif
 
     var body: some View {
         if atmosphere {
@@ -123,11 +115,7 @@ struct GradientOrb: View {
 struct AtmosphereGradientOrb: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var start = Date()
-    #if DEBUG
-    @AppStorage(GradientAtmosphere.saturationKey) private var saturation = GradientAtmosphere.saturation
-    #else
     private let saturation = GradientAtmosphere.saturation
-    #endif
 
     var body: some View {
         TimelineView(.animation(paused: reduceMotion)) { context in
@@ -192,13 +180,8 @@ private struct DriftingPool: View {
 struct GrainOverlay: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var start = Date()
-    #if DEBUG
-    @AppStorage(GradientAtmosphere.grainOpacityKey) private var grainOpacity = GradientAtmosphere.pageGrainOpacity
-    @AppStorage(GradientAtmosphere.grainSizeKey) private var grainSize = GradientAtmosphere.pageGrainSize
-    #else
     private let grainOpacity = GradientAtmosphere.pageGrainOpacity
     private let grainSize = GradientAtmosphere.pageGrainSize
-    #endif
 
     var body: some View {
         TimelineView(.periodic(from: start, by: reduceMotion ? 3600 : 1.0 / 24)) { context in
@@ -217,70 +200,3 @@ struct GrainOverlay: View {
         .allowsHitTesting(false)
     }
 }
-
-// MARK: - Debug picker
-
-#if DEBUG
-struct GradientAtmosphereDebugPicker: View {
-    var onDarkBackground = false
-
-    @AppStorage(GradientAtmosphere.storageKey) private var atmosphere = true
-    @AppStorage(GradientAtmosphere.grainOpacityKey) private var grainOpacity = GradientAtmosphere.pageGrainOpacity
-    @AppStorage(GradientAtmosphere.grainSizeKey) private var grainSize = GradientAtmosphere.pageGrainSize
-    @AppStorage(GradientAtmosphere.saturationKey) private var saturation = GradientAtmosphere.saturation
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("BACKGROUND")
-                .font(.system(size: 10, weight: .bold))
-                .foregroundColor(onDarkBackground ? .white.opacity(0.6) : .secondary)
-
-            HStack(spacing: 8) {
-                ForEach([true, false], id: \.self) { option in
-                    Button(action: { atmosphere = option }) {
-                        Text(option ? "Atmosphere" : "Classic")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(atmosphere == option ? .white : (onDarkBackground ? .white : .primary))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .frame(maxWidth: .infinity)
-                            .background(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .fill(atmosphere == option ? Color.orange : Color.gray.opacity(onDarkBackground ? 0.35 : 0.2))
-                            )
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                }
-            }
-
-            if atmosphere {
-                tuner("Grain", value: $grainOpacity, range: 0...0.5, format: "%.2f")
-                tuner("Grain size", value: $grainSize, range: 0.2...2, format: "%.2f pt")
-                tuner("Saturation", value: $saturation, range: 0.3...1.2, format: "%.2f")
-                Button("Reset") {
-                    grainOpacity = GradientAtmosphere.pageGrainOpacity
-                    grainSize = GradientAtmosphere.pageGrainSize
-                    saturation = GradientAtmosphere.saturation
-                }
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.orange)
-            }
-        }
-    }
-
-    private func tuner(_ label: String, value: Binding<Double>, range: ClosedRange<Double>, format: String) -> some View {
-        HStack(spacing: 8) {
-            Text(label)
-                .font(.system(size: 11))
-                .foregroundColor(onDarkBackground ? .white.opacity(0.8) : .primary)
-                .frame(width: 70, alignment: .leading)
-            Slider(value: value, in: range)
-                .tint(.orange)
-            Text(String(format: format, value.wrappedValue))
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundColor(onDarkBackground ? .white.opacity(0.6) : .secondary)
-                .frame(width: 54, alignment: .trailing)
-        }
-    }
-}
-#endif
