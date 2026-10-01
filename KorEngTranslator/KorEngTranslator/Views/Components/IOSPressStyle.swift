@@ -75,7 +75,16 @@ private struct IOSPressBody<Label: View, S: Shape>: View {
         }
     }
 
+    #if DEBUG
+    /// The live recording demo's autopilot holds buttons down without a finger (LiveRecordingDemo)
+    @Environment(\.isRecordingHeld) private var isRecordingHeld
+    private var shownPressed: Bool { isPressed || isRecordingHeld }
+    #else
+    private var shownPressed: Bool { isPressed }
+    #endif
+
     var body: some View {
+        let isPressed = shownPressed
         label
             .overlay {
                 shape

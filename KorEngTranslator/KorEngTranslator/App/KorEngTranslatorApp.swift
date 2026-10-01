@@ -24,9 +24,10 @@ struct KorEngTranslatorApp: App {
         WindowGroup {
             #if DEBUG
             Group {
-                if ProcessInfo.processInfo.arguments.contains("-orbPreview") && !hasRestartedToHome {
+                if (ProcessInfo.processInfo.arguments.contains("-orbPreview") || LiveRecordingDemo.isOn) && !hasRestartedToHome {
                     // Screenshot / preview harness: jump straight to the translator screen.
                     // Combine with -siriGlass 1 -orbState listening -orbLevel 0.6
+                    // (-liveDemo: the reel's screen recording, LiveRecordingDemo.swift)
                     LiveTranslationScreen(roomId: "ORB-PREVIEW", language: "en")
                 } else {
                     WelcomeScreenLangSelect()
@@ -37,6 +38,8 @@ struct KorEngTranslatorApp: App {
                 hasRestartedToHome = true
                 rootID = UUID()
             }
+            // Website pairing videos: -pairingDemo en|ko, -cleanRecording, -showTouches
+            .pairingRecordingDemo()
             #else
             WelcomeScreenLangSelect()
             #endif

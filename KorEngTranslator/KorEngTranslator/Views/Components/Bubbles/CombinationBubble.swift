@@ -42,19 +42,31 @@ struct CombinationBubble: View {
     private let coralOrange = Color(hex: "F38D52")           // Mid-tone
     private let white = Color(hex: "FEFEFE")                 // Slightly off-white
 
+    #if DEBUG
+    /// Debug "Flow (reel)" style: the same orb with its colors flowing (OrbFlowStyle.swift)
+    private let flow: OrbFlowStyle?
+    /// Where the turns start, when the flow style sets them (nil: from 0, as the app does)
+    @State private var flowOrbStart: Double?
+    @State private var flowHaloStart: Double?
+
+    init(flow: OrbFlowStyle? = nil) {
+        self.flow = flow
+    }
+    #endif
+
     // MARK: - Body
 
     var body: some View {
         ZStack {
-            // Layer 1: Gradient Blur Background - breathes with the orb, turns on its own clock
-            gradientBlurBackground
-                .rotationEffect(.degrees(haloRotation))
-                .scaleEffect(orbScale)
-
-            // Layers 2-5: Main Orb Group
-            mainOrbGroup
-                .rotationEffect(.degrees(orbRotation))
-                .scaleEffect(orbScale)
+            #if DEBUG
+            if let flow {
+                flowLayers(flow)
+            } else {
+                classicLayers
+            }
+            #else
+            classicLayers
+            #endif
 
             // Layer 6: Shine (independent)
             shineLayer
@@ -65,6 +77,37 @@ struct CombinationBubble: View {
         .onAppear {
             startAnimations()
         }
+    }
+
+    /// Where each turn's repeating animation ends: one full turn past where it starts
+    private var orbTurnEnd: Double {
+        #if DEBUG
+        return (flowOrbStart ?? 0) + 360
+        #else
+        return 360
+        #endif
+    }
+
+    private var haloTurnEnd: Double {
+        #if DEBUG
+        return (flowHaloStart ?? 0) + 360
+        #else
+        return 360
+        #endif
+    }
+
+    /// Layers 1-5
+    @ViewBuilder
+    private var classicLayers: some View {
+        // Layer 1: Gradient Blur Background - breathes with the orb, turns on its own clock
+        gradientBlurBackground
+            .rotationEffect(.degrees(haloRotation))
+            .scaleEffect(orbScale)
+
+        // Layers 2-5: Main Orb Group
+        mainOrbGroup
+            .rotationEffect(.degrees(orbRotation))
+            .scaleEffect(orbScale)
     }
 
     // MARK: - Layer 1: Gradient Blur Background
@@ -243,13 +286,18 @@ struct CombinationBubble: View {
     private func startAnimations() {
         // Stagger animation starts slightly to avoid SwiftUI batching issues
 
+        #if DEBUG
+        // The flow style can start each turn where the reel's orb is, a frame before it starts turning
+        startFlowTurns(in: 0.1)
+        #endif
+
         // 1. Orb rotation, and the halo's own slower one (slow, continuous)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             withAnimation(.linear(duration: 30).repeatForever(autoreverses: false)) {
-                orbRotation = 360
+                orbRotation = orbTurnEnd
             }
             withAnimation(.linear(duration: 44).repeatForever(autoreverses: false)) {
-                haloRotation = 360
+                haloRotation = haloTurnEnd
             }
         }
 
@@ -362,6 +410,98 @@ struct CombinationBubble: View {
         }
     }
 }
+
+#if DEBUG
+// MARK: - Flow (reel) style
+
+extension CombinationBubble {
+    /// The flow style's layers 1-5, back to front: the app's halo and inner gradient in the reel's
+    /// colors at 40%, the field's glow, the field inside the blob, then the glass, top glass and rim.
+    /// They turn and breathe with the orb like the classic layers.
+    @ViewBuilder
+    fileprivate func flowLayers(_ flow: OrbFlowStyle) -> some View {
+        // The app's own colors underneath, thinned, so the middle is never empty
+        flowHalo
+            .rotationEffect(.degrees(haloRotation))
+            .scaleEffect(orbScale)
+        flowBlob
+            .fill(flowInnerGradient)
+            .frame(width: orbSize, height: orbSize)
+            .opacity(0.80 * OrbFlowStyle.underlayOpacity)
+            .mask(OrbFlowStyle.fade(radius: orbSize / 2))
+            .rotationEffect(.degrees(orbRotation))
+            .scaleEffect(orbScale)
+
+        // The glow: the field, calmed and blurred far, under the halo's fade (drawn past its square
+        // so the blur doesn't thin out at the edges)
+        OrbFlowField(side: backgroundSize + 6 * OrbFlowStyle.glowBlur, colors: OrbFlowStyle.glowColors)
+            .blur(radius: OrbFlowStyle.glowBlur)
+            .frame(width: backgroundSize, height: backgroundSize)
+            .mask(OrbFlowStyle.fade(radius: backgroundSize / 2))
+            .opacity(OrbFlowStyle.glowOpacity)
+            .rotationEffect(.degrees(orbRotation))
+            .scaleEffect(orbScale)
+
+        // The body: the field inside the blob's own outline, under the inner fade
+        OrbFlowField(side: orbSize * 1.5, colors: OrbFlowStyle.fieldColors)
+            .blur(radius: OrbFlowStyle.bodyBlur)
+            .mask(OrbFlowStyle.fade(radius: orbSize / 2))
+            .mask(flowBlob.frame(width: orbSize, height: orbSize))
+            .opacity(OrbFlowStyle.bodyOpacity)
+            .rotationEffect(.degrees(orbRotation))
+            .scaleEffect(orbScale)
+
+        // The app's glass, top glass and rim on top, unchanged
+        ZStack {
+            glassMiddleLayer
+            topGlassBlurLayer
+            strokeLayer
+        }
+        .rotationEffect(.degrees(orbRotation))
+        .scaleEffect(orbScale)
+    }
+
+    private var flowBlob: AnimatableOrganicBlob {
+        AnimatableOrganicBlob(topBulge: topBulge, rightBulge: rightBulge, bottomBulge: bottomBulge, leftBulge: leftBulge)
+    }
+
+    /// Layer 1 in the reel's colors
+    private var flowHalo: some View {
+        LinearGradient(colors: [OrbFlowStyle.coral, OrbFlowStyle.peach], startPoint: .topLeading, endPoint: .bottomTrailing)
+            .opacity(0.80 * OrbFlowStyle.underlayOpacity)
+            .frame(width: backgroundSize, height: backgroundSize)
+            .mask(OrbFlowStyle.fade(radius: backgroundSize / 2))
+    }
+
+    /// Layer 3's animating gradient in the reel's colors
+    private var flowInnerGradient: LinearGradient {
+        LinearGradient(
+            stops: [
+                .init(color: OrbFlowStyle.peach.opacity(1.0), location: gradientStop1),
+                .init(color: OrbFlowStyle.amber.opacity(0.50), location: gradientStop2),
+                .init(color: OrbFlowStyle.coralOrange.opacity(0.75), location: gradientStop3),
+                .init(color: OrbFlowStyle.coral.opacity(1.0), location: gradientStop4)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
+    /// With -orbFlowAngle / -orbHaloAngle, turns the orb and its halo to where each turn should start
+    /// `delay` from now, so they read those angles at the live demo's t = 0
+    fileprivate func startFlowTurns(in delay: Double) {
+        guard let flow else { return }
+        if let start = OrbFlowStyle.startAngle(flow.orbAngleAtStart, period: 30, startingIn: delay) {
+            flowOrbStart = start
+            orbRotation = start
+        }
+        if let start = OrbFlowStyle.startAngle(flow.haloAngleAtStart, period: 44, startingIn: delay) {
+            flowHaloStart = start
+            haloRotation = start
+        }
+    }
+}
+#endif
 
 // MARK: - Animatable Organic Blob Shape
 

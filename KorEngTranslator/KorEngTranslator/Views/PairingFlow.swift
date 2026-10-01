@@ -638,9 +638,9 @@ struct PairingScreen: View {
     #if targetEnvironment(simulator)
     @State private var debugMode = true   // Simulator: no real pairing, use the debug controls
     #else
-    @State private var debugMode = false  // Device: pair for real (the toggle below still switches)
+    @State private var debugMode = RecordingDemo.isPairingDemo  // Device: pair for real (the toggle below still switches), except in the recording demo
     #endif
-    @State private var debugHeadphonesConnected = false
+    @State private var debugHeadphonesConnected = RecordingDemo.startsWithHeadphones  // pairing demo
     #endif
 
     private var effectiveHeadphoneStatus: Bool {
@@ -788,6 +788,9 @@ struct PairingScreen: View {
         } message: {
             Text("You'll need headphones to hear the live translation.")
         }
+        #if DEBUG
+        .pairingDemoSearch(headphones: $debugHeadphonesConnected) { onSuccess?($0) }
+        #endif
     }
 
     // MARK: - Headphone Alert Logic
@@ -985,6 +988,9 @@ struct PairingScreen: View {
     #endif
 
     private func openBluetoothSettings() {
+        #if DEBUG
+        if RecordingDemo.openFakeBluetoothSettings() { return }  // English pairing demo
+        #endif
         #if os(iOS)
         if let url = URL(string: "App-Prefs:root=Bluetooth") {
             UIApplication.shared.open(url)
@@ -2729,6 +2735,7 @@ struct SetupSuccessScreen: View {
                 .padding(.top, LiveLayoutTuning.shared.languagesTop)  // level with the live screen's language row
                 Spacer()
             }
+            .hiddenWhileRecording()
             #endif
         }
         .onAppear {
@@ -2740,6 +2747,9 @@ struct SetupSuccessScreen: View {
             // Auto-proceed 200ms after the check badge settles
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5 + SuccessCheckBadge.playDuration + 0.2) {
                 guard !hasProceeded else { return }
+                #if DEBUG
+                if RecordingDemo.holdsOnSuccess { return }  // pairing demo: the take ends here
+                #endif
                 hasProceeded = true
                 onProceed?()
             }
@@ -2897,10 +2907,18 @@ struct LiveTranslationScreen: View {
     @State private var conversation = ConversationLog()
     /// The scripted demo chat is playing (debug): the mic control shows its live, expanded state
     @State private var isDemoPlaying = false
+    #if DEBUG
+    /// Who's talking in the reel's screen recording (LiveRecordingDemo), in place of the mic and captions
+    @State private var demoVoice: VoiceActivity?
+    #endif
 
     // MARK: - Debug Mode State
     @State private var showDebugMenu: Bool = false
+    #if DEBUG
+    @State private var selectedBubbleStyle: BubbleStyle = .launchDefault  // -orbStyle
+    #else
     @State private var selectedBubbleStyle: BubbleStyle = .combination
+    #endif
     @State private var simulatedAudioLevel: CGFloat = 0.0
     @State private var isSimulatingSpeaking: Bool = false
     @State private var useSiriGlass: Bool = false          // New Siri-style glass look (debug toggle)
@@ -2972,7 +2990,10 @@ struct LiveTranslationScreen: View {
 
     /// Who's talking, for the voice glow, the partner's edge light and the orb's pulse
     private var voiceActivity: VoiceActivity {
-        VoiceActivity.resolve(
+        #if DEBUG
+        if let demoVoice { return demoVoice }  // the reel's screen recording
+        #endif
+        return VoiceActivity.resolve(
             micLevel: effectiveAudioLevel,
             iAmSpeaking: effectiveIsSpeaking,
             micRunning: isSessionActive || showDebugMenu,
@@ -3021,6 +3042,9 @@ struct LiveTranslationScreen: View {
                 languageSelectorView
                     .padding(.top, liveLayout.languagesTop)
                 ConversationChatView(turns: conversation.turns, isKorean: isKorean)
+                    #if DEBUG
+                    .replacedByLiveDemoChat()  // the reel's recording: a scripted thread
+                    #endif
             }
             // Newest bubble micGap above the mic button (micBottom up from the screen's bottom edge,
             // 80pt tall; ChatLayoutTuning); the chat's own bottom padding holds its shadow
@@ -3052,6 +3076,9 @@ struct LiveTranslationScreen: View {
                 }
                 Spacer()
             }
+            #if DEBUG
+            .hiddenWhileRecording()  // the reel's recording has no connection
+            #endif
 
             // Voice & honorifics cards - micMenuBottom above the screen's bottom edge, uncovered by the lifted mic button
             VStack {
@@ -3137,6 +3164,7 @@ struct LiveTranslationScreen: View {
                         .padding(.bottom, 100)
                 }
             }
+            .hiddenWhileRecording()
 
             // Chat bubble radius, padding, gaps and spring (speech-bubble button, bottom left)
             ChatLayoutPanel()
@@ -3159,6 +3187,11 @@ struct LiveTranslationScreen: View {
             reconnectTask?.cancel()
             disconnect()
         }
+        #if DEBUG
+        // The reel's screen recording (-liveDemo -demoAutopilot): plays the take through this state
+        .liveRecordingDemo(isSessionActive: $isSessionActive, hasStartedOnce: $hasStartedOnce,
+                           isMicMenuOpen: $isMicMenuOpen, honorificsOn: $honorificsOn, voice: $demoVoice)
+        #endif
     }
 
     // MARK: - Connection Status View
@@ -3600,7 +3633,7 @@ struct LiveTranslationScreen: View {
 
     /// True only on the `-orbPreview` launch route (see KorEngTranslatorApp), never in the normal flow
     private var isOrbPreview: Bool {
-        roomId == "ORB-PREVIEW" && ProcessInfo.processInfo.arguments.contains("-orbPreview")
+        roomId == "ORB-PREVIEW" && (ProcessInfo.processInfo.arguments.contains("-orbPreview") || LiveRecordingDemo.isOn)
     }
 
     /// Launch arguments for screenshot / preview runs (Debug builds only), e.g.
@@ -3905,9 +3938,9 @@ struct PairingScreenKorean: View {
     #if targetEnvironment(simulator)
     @State private var debugMode = true   // Simulator: no real pairing, use the debug controls
     #else
-    @State private var debugMode = false  // Device: pair for real (the toggle below still switches)
+    @State private var debugMode = RecordingDemo.isPairingDemo  // Device: pair for real (the toggle below still switches), except in the recording demo
     #endif
-    @State private var debugHeadphonesConnected = false
+    @State private var debugHeadphonesConnected = RecordingDemo.startsWithHeadphones  // pairing demo
     #endif
 
     private var effectiveHeadphoneStatus: Bool {
@@ -4055,6 +4088,9 @@ struct PairingScreenKorean: View {
         } message: {
             Text("실시간 번역을 들으려면 헤드폰이 필요해요.")
         }
+        #if DEBUG
+        .pairingDemoSearch(headphones: $debugHeadphonesConnected) { onSuccess?($0) }
+        #endif
     }
 
     // MARK: - Headphone Alert Logic (Korean)
@@ -4074,6 +4110,9 @@ struct PairingScreenKorean: View {
     }
 
     private func openBluetoothSettings() {
+        #if DEBUG
+        if RecordingDemo.openFakeBluetoothSettings() { return }  // English pairing demo
+        #endif
         #if os(iOS)
         if let url = URL(string: "App-Prefs:root=Bluetooth") {
             UIApplication.shared.open(url)
@@ -5044,6 +5083,7 @@ struct SetupSuccessScreenKorean: View {
                 .padding(.top, LiveLayoutTuning.shared.languagesTop)  // level with the live screen's language row
                 Spacer()
             }
+            .hiddenWhileRecording()
             #endif
         }
         .onAppear {
@@ -5055,6 +5095,9 @@ struct SetupSuccessScreenKorean: View {
             // Auto-proceed 200ms after the check badge settles
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5 + SuccessCheckBadge.playDuration + 0.2) {
                 guard !hasProceeded else { return }
+                #if DEBUG
+                if RecordingDemo.holdsOnSuccess { return }  // pairing demo: the take ends here
+                #endif
                 hasProceeded = true
                 onProceed?()
             }

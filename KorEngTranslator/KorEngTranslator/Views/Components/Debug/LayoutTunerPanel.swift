@@ -48,6 +48,7 @@ struct LayoutTunerPanel<Rows: View>: View {
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 8)
+        .hiddenWhileRecording()
     }
 
     private var toggle: some View {

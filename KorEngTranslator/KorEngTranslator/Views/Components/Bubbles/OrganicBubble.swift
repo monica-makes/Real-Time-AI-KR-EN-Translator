@@ -6,12 +6,19 @@ enum BubbleStyle: Int, CaseIterable {
     case organic = 1
     case glass = 2
     case combination = 3
+    #if DEBUG
+    /// Combination with its colors flowing like the reel's orb (OrbFlowStyle.swift)
+    case flow = 4
+    #endif
 
     var displayName: String {
         switch self {
         case .organic: return "Organic"
         case .glass: return "Glass"
         case .combination: return "Combination"
+        #if DEBUG
+        case .flow: return "Flow (reel)"
+        #endif
         }
     }
 }
@@ -61,6 +68,10 @@ struct OrganicBubble: View {
                 GlassOnlyBubble()
             case .combination:
                 CombinationBubble()
+            #if DEBUG
+            case .flow:
+                CombinationBubble(flow: .launch)
+            #endif
             }
         }
     }

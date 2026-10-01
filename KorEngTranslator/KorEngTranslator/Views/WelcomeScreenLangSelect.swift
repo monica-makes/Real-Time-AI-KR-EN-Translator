@@ -410,11 +410,31 @@ struct WelcomeScreenLangSelect: View {
             }
         }
         .onAppear {
+            #if DEBUG
+            // Pairing demo autopilot: the heading starts at t0 with the autopilot, once the app is on screen
+            if RecordingDemo.config.autopilot, RecordingDemo.role != nil {
+                DispatchQueue.main.asyncAfter(deadline: .now() + RecordingDemo.Autopilot.homeSettle) {
+                    startAnimationCycle()
+                }
+                return
+            }
+            #endif
             startAnimationCycle()
         }
         .onDisappear {
             stopTimers()
         }
+        #if DEBUG
+        // Pairing demo autopilot (-demoAutopilot): taps a language card on schedule, same as a finger
+        .pairingDemoLanguageTap { role in
+            let language: LanguageOption = role == .ko ? .korean : .english
+            onboardingState.selectedLanguage = language
+            onLanguageSelected?(language)
+            DispatchQueue.main.asyncAfter(deadline: .now() + AppStyle.cardSelectNavigationDelay) {
+                OnboardingPush.go(.forward, edge: $pushEdge) { showNewScreen = true }
+            }
+        }
+        #endif
     }
 
     // MARK: - Animation Methods
@@ -496,7 +516,13 @@ struct WelcomeScreenLangSelect: View {
     private func typingInterval(index: Int) -> TimeInterval {
         // Add slight random variation (±0.01s) for organic feel
         let baseInterval = 1.0 / charactersPerSecond
+        #if DEBUG
+        // Pairing demo autopilot: the same wobble on both phones and in every take
+        let randomVariation = RecordingDemo.typingJitter(index: index, korean: !isShowingEnglish)
+            ?? Double.random(in: -0.01...0.01)
+        #else
         let randomVariation = Double.random(in: -0.01...0.01)
+        #endif
         return max(0.02, baseInterval + randomVariation)
     }
 
