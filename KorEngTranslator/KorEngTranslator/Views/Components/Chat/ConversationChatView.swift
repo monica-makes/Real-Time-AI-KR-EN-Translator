@@ -158,8 +158,9 @@ struct ChatBubble: View {
     }
 }
 
-/// Glass per the Figma call screen: my bubbles filled, the partner's outlined
-private struct ChatBubbleBackground: View {
+/// Glass per the Figma call screen: my bubbles filled, the partner's outlined (also the live
+/// recording demo's bubbles)
+struct ChatBubbleBackground: View {
     let isMine: Bool
     let cornerRadius: CGFloat
 

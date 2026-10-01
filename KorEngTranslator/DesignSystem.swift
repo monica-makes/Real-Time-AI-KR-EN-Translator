@@ -662,6 +662,9 @@ struct MicButton: View {
     private enum PrimaryIcon { case mic, mute, play }
 
     private var primaryIcon: PrimaryIcon {
+        #if DEBUG
+        if LiveRecordingDemo.keepsMicIcon { return .mic }  // the live screen's recording demo
+        #endif
         if isSessionActive { return .mute }
         return isPaused ? .play : .mic
     }
@@ -763,6 +766,9 @@ struct MicButton: View {
             }
             // iOS's press for an interactive glass circle: grows 16pt, 40% white, bounces back
             .buttonStyle(IOSPressStyle(.control, in: Circle(), highlight: 0.4))
+            #if DEBUG
+            .recordingPressID("mic")  // the live recording demo holds it down
+            #endif
             .accessibilityLabel(primaryIcon == .mute ? "Pause" : primaryIcon == .play ? "Resume" : "Start")
         }
     }
@@ -1289,6 +1295,9 @@ private struct GooeySecondaryButton: View {
                 )
             }
             .buttonStyle(IOSPressStyle(.control, in: Circle()))
+            #if DEBUG
+            .recordingPressID(iconName)  // the live recording demo holds it down
+            #endif
             .accessibilityLabel(accessibilityLabel)
             .offset(x: x)
             // Hidden when tucked in, since the mic dims while pressed
@@ -1428,6 +1437,9 @@ private struct MicMenuCard: View {
         // button on the phone's iOS version
         .buttonStyle(.glass)
         .buttonBorderShape(.roundedRectangle(radius: AppStyle.cornerRadius))
+        #if DEBUG
+        .recordingCardPress(iconName)  // the live recording demo taps it
+        #endif
     }
 
     private func icon(_ name: String) -> some View {

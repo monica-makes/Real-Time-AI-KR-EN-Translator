@@ -123,6 +123,7 @@ struct CollapsibleDebugControls<Panel: View>: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
+        .hiddenWhileRecording()
     }
 }
 #endif
