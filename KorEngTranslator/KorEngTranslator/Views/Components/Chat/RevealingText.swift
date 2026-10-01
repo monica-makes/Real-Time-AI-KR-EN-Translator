@@ -15,11 +15,7 @@ enum ChatTextReveal: String, CaseIterable {
 
     /// The stored debug choice; release builds always use the default
     static func resolved(_ rawValue: String) -> ChatTextReveal {
-        #if DEBUG
-        return ChatTextReveal(rawValue: rawValue) ?? defaultStyle
-        #else
         return defaultStyle
-        #endif
     }
 
     var label: String {

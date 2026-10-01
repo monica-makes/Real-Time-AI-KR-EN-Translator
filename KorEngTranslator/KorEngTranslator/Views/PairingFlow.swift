@@ -633,22 +633,7 @@ struct PairingScreen: View {
     @State private var hasShownHeadphoneAlert = false
     @State private var headphoneAlertTimer: Timer? = nil
 
-    // DEBUG: Mode toggle for simulator testing
-    #if DEBUG
-    #if targetEnvironment(simulator)
-    @State private var debugMode = true   // Simulator: no real pairing, use the debug controls
-    #else
-    @State private var debugMode = RecordingDemo.isPairingDemo  // Device: pair for real (the toggle below still switches), except in the recording demo
-    #endif
-    @State private var debugHeadphonesConnected = RecordingDemo.startsWithHeadphones  // pairing demo
-    #endif
-
     private var effectiveHeadphoneStatus: Bool {
-        #if DEBUG
-        if debugMode {
-            return debugHeadphonesConnected
-        }
-        #endif
         return headphoneMonitor.isConnected
     }
 
@@ -724,25 +709,10 @@ struct PairingScreen: View {
                 .padding(.top, LiveLayoutTuning.shared.languagesTop)  // level with the live screen's language row
                 Spacer()
             }
-
-            // DEBUG: Explicit controls panel at bottom (folds into a ladybug), and the layout panel
-            #if DEBUG
-            CollapsibleDebugControls {
-                debugControlsPanel
-            }
-            PartnerSearchLayoutPanel()
-            #endif
         }
         .onAppear {
-            #if DEBUG
-            if !debugMode {
-                pairingManager.connect(direction: direction, headphonesConnected: effectiveHeadphoneStatus)
-                startHeadphoneAlertTimer()
-            }
-            #else
             pairingManager.connect(direction: direction, headphonesConnected: effectiveHeadphoneStatus)
             startHeadphoneAlertTimer()
-            #endif
         }
         .onDisappear {
             pairingManager.disconnect()
@@ -750,13 +720,7 @@ struct PairingScreen: View {
             headphoneAlertTimer = nil
         }
         .onChange(of: headphoneMonitor.isConnected) { _, newValue in
-            #if DEBUG
-            if !debugMode {
-                pairingManager.sendHeadphoneStatus(connected: newValue)
-            }
-            #else
             pairingManager.sendHeadphoneStatus(connected: newValue)
-            #endif
 
             // If headphones connected, cancel alert timer
             if newValue {
@@ -788,9 +752,6 @@ struct PairingScreen: View {
         } message: {
             Text("You'll need headphones to hear the live translation.")
         }
-        #if DEBUG
-        .pairingDemoSearch(headphones: $debugHeadphonesConnected) { onSuccess?($0) }
-        #endif
     }
 
     // MARK: - Headphone Alert Logic
@@ -818,179 +779,7 @@ struct PairingScreen: View {
         showHeadphoneAlert = true
     }
 
-    #if DEBUG
-    private var debugControlsPanel: some View {
-        VStack(spacing: 16) {
-            // Header
-            HStack {
-                Image(systemName: "ladybug.fill")
-                    .foregroundColor(.orange)
-                Text("Debug Controls")
-                    .font(.system(size: 14, weight: .semibold))
-                Spacer()
-                Toggle("", isOn: $debugMode)
-                    .toggleStyle(SwitchToggleStyle(tint: .orange))
-                    .labelsHidden()
-                    .onChange(of: debugMode) { _, newValue in
-                        if newValue {
-                            pairingManager.disconnect()
-                        } else {
-                            pairingManager.connect(direction: direction, headphonesConnected: effectiveHeadphoneStatus)
-                        }
-                    }
-            }
-
-            // Pairing mode (remembered): Starter / Joiner jumps to the Create/Join choice
-            PairingModeDebugPicker { mode in
-                if mode == .starterJoiner {
-                    onManualPairing?("")
-                }
-            }
-
-            TypographyDebugPicker()
-
-            if debugMode {
-                // Headphones Section
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("HEADPHONES")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(.secondary)
-
-                    HStack(spacing: 8) {
-                        Button(action: { debugHeadphonesConnected = true }) {
-                            HStack {
-                                Image(systemName: "checkmark.circle.fill")
-                                Text("Paired")
-                            }
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(debugHeadphonesConnected ? .white : .primary)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .frame(maxWidth: .infinity)
-                            .background(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .fill(debugHeadphonesConnected ? Color.green : Color.gray.opacity(0.2))
-                            )
-                        }
-                        .buttonStyle(PlainButtonStyle())
-
-                        Button(action: { debugHeadphonesConnected = false }) {
-                            HStack {
-                                Image(systemName: "xmark.circle.fill")
-                                Text("Not Paired")
-                            }
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(!debugHeadphonesConnected ? .white : .primary)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .frame(maxWidth: .infinity)
-                            .background(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .fill(!debugHeadphonesConnected ? Color.red : Color.gray.opacity(0.2))
-                            )
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                    }
-                }
-
-                // WiFi Connection Section
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("WIFI CONNECTION RESULT")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(.secondary)
-
-                    HStack(spacing: 8) {
-                        Button(action: {
-                            // If headphones not connected, show alert first
-                            if !debugHeadphonesConnected {
-                                showHeadphoneAlertIfNeeded()
-                            } else {
-                                onSuccess?("DEBUG-ROOM-123")
-                            }
-                        }) {
-                            HStack {
-                                Image(systemName: "wifi")
-                                Text("Success")
-                            }
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .frame(maxWidth: .infinity)
-                            .background(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .fill(Color.green)
-                            )
-                        }
-                        .buttonStyle(PlainButtonStyle())
-
-                        Button(action: {
-                            onManualPairing?("208098")
-                        }) {
-                            HStack {
-                                Image(systemName: "wifi.slash")
-                                Text("Failed")
-                            }
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .frame(maxWidth: .infinity)
-                            .background(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .fill(Color.orange)
-                            )
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                    }
-                }
-
-                // Headphone Alert Test
-                Button(action: {
-                    hasShownHeadphoneAlert = false  // Reset for testing
-                    showHeadphoneAlertIfNeeded()
-                }) {
-                    HStack {
-                        Image(systemName: "headphones")
-                        Text("Show Headphone Alert")
-                    }
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .frame(maxWidth: .infinity)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(Color.blue)
-                    )
-                }
-                .buttonStyle(PlainButtonStyle())
-            } else {
-                // Live mode status
-                HStack {
-                    Circle()
-                        .fill(pairingManager.isConnected ? Color.green : Color.red)
-                        .frame(width: 8, height: 8)
-                    Text(pairingManager.isConnected ? "Connected to server" : "Connecting... (8s timeout)")
-                        .font(.system(size: 12))
-                        .foregroundColor(.secondary)
-                    Spacer()
-                }
-            }
-        }
-        .padding(16)
-        .glassEffect(.regular, in: .rect(cornerRadius: 12))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.orange.opacity(0.3), lineWidth: 1)
-        )
-    }
-    #endif
-
     private func openBluetoothSettings() {
-        #if DEBUG
-        if RecordingDemo.openFakeBluetoothSettings() { return }  // English pairing demo
-        #endif
         #if os(iOS)
         if let url = URL(string: "App-Prefs:root=Bluetooth") {
             UIApplication.shared.open(url)
@@ -1299,14 +1088,6 @@ struct ManualPairingScreen: View {
     @ObservedObject private var sharedCodeManager = RoomCodeManager.shared
     @StateObject private var pairingManager = PairingWebSocketManager()
 
-    // Debug mode override
-    #if DEBUG
-    @State private var debugSessionMode: SessionMode? = nil
-    @State private var debugCollapsed = true
-    @State private var debugLanguage: String = "en"  // "en" or "ko" for cross-language switching
-    @State private var showPartnerJoinView = false  // Fade to Korean Join view
-    #endif
-
     private func triggerHaptic(style: UIImpactFeedbackGenerator.FeedbackStyle = .light) {
         #if os(iOS)
         let impactFeedback = UIImpactFeedbackGenerator(style: style)
@@ -1339,127 +1120,56 @@ struct ManualPairingScreen: View {
     }
 
     private var effectiveMode: SessionMode {
-        #if DEBUG
-        return debugSessionMode ?? sessionMode
-        #else
         return sessionMode
-        #endif
     }
-
-    // In debug mode, Join should show Korean (partner's language)
-    #if DEBUG
-    private var isShowingPartnerLanguage: Bool {
-        debugSessionMode == .join
-    }
-    #endif
 
     // Localized text properties for cross-language debug support
     private var titleText: String {
-        #if DEBUG
-        if isShowingPartnerLanguage {
-            return "파트너를 찾을 수 없나요?"
-        }
-        #endif
         return "Can't find your partner?"
     }
 
     private var subtitleText: String {
-        #if DEBUG
-        if isShowingPartnerLanguage {
-            return "다른 네트워크에 있을 수 있어요."
-        }
-        #endif
         return "You might be on different networks."
     }
 
     private var titleFont: Font {
-        #if DEBUG
-        if isShowingPartnerLanguage {
-            return AppTypography.h2Korean
-        }
-        #endif
         return AppTypography.h2
     }
 
     private var bodyFont: Font {
-        #if DEBUG
-        if isShowingPartnerLanguage {
-            return AppTypography.b2Korean
-        }
-        #endif
         return AppTypography.b2
     }
 
     private var h3Font: Font {
-        #if DEBUG
-        if isShowingPartnerLanguage {
-            return AppTypography.h3Korean
-        }
-        #endif
         return AppTypography.h3
     }
 
     private var b3Font: Font {
-        #if DEBUG
-        if isShowingPartnerLanguage {
-            return AppTypography.b3Korean
-        }
-        #endif
         return AppTypography.b3
     }
 
     // Join mode localized text
     private var scanQRText: String {
-        #if DEBUG
-        if isShowingPartnerLanguage {
-            return "QR 코드를 스캔하세요:"
-        }
-        #endif
         return "Scan their QR code:"
     }
 
     private var cameraNotAvailableSimulatorText: String {
-        #if DEBUG
-        if isShowingPartnerLanguage {
-            return "시뮬레이터에서 카메라를 사용할 수 없습니다"
-        }
-        #endif
         return "Camera not available in Simulator"
     }
 
     private var cameraNotAvailableText: String {
-        #if DEBUG
-        if isShowingPartnerLanguage {
-            return "카메라를 사용할 수 없습니다"
-        }
-        #endif
         return "Camera not available"
     }
 
     private var manualEntryText: String {
-        #if DEBUG
-        if isShowingPartnerLanguage {
-            return "스캔이 안 되나요? 코드를 입력하세요."
-        }
-        #endif
         return "Not scanning? Enter in their code."
     }
 
     private var verifyingCodeText: String {
-        #if DEBUG
-        if isShowingPartnerLanguage {
-            return "코드 확인 중..."
-        }
-        #endif
         return "Verifying code..."
     }
 
     private var invalidCodeText: String {
-        #if DEBUG
-        if isShowingPartnerLanguage {
-            return "잘못된 코드입니다. 다시 시도해 주세요."
-        }
-        #endif
         return "Invalid code. Please try again."
     }
 
@@ -1475,12 +1185,6 @@ struct ManualPairingScreen: View {
     private var backgroundElementsOpacity: Double {
         isCodeFieldFocused ? 1.0 : 0.9
     }
-
-    #if DEBUG
-    private var mainContentOpacity: Double {
-        showPartnerJoinView ? 0 : 1
-    }
-    #endif
 
     var body: some View {
         GeometryReader { geometry in
@@ -1617,26 +1321,12 @@ struct ManualPairingScreen: View {
                     .transition(.opacity)
                 }
             }
-            #if DEBUG
-            .opacity(mainContentOpacity)
-            .animation(.easeInOut(duration: 0.3), value: showPartnerJoinView)
-            #endif
 
             // Back button (fixed, always on top of gradient)
             VStack {
                 HStack {
                     BackButton {
-                        #if DEBUG
-                        if showPartnerJoinView {
-                            // Navigate to pairing screen when viewing partner's screen
-                            showPartnerJoinView = false
-                            onBackTapped?()
-                        } else {
-                            onBackTapped?()
-                        }
-                        #else
                         onBackTapped?()
-                        #endif
                     }
                     Spacer()
                 }
@@ -1644,66 +1334,6 @@ struct ManualPairingScreen: View {
                 .padding(.top, LiveLayoutTuning.shared.languagesTop)  // level with the live screen's language row
                 Spacer()
             }
-            #if DEBUG
-            .opacity(mainContentOpacity)
-            .animation(.easeInOut(duration: 0.3), value: showPartnerJoinView)
-            #endif
-
-            // DEBUG: layout panel (ruler, bottom left) - the whole unit's top, then each gap
-            #if DEBUG
-            if !showPartnerJoinView {
-                PairingLayoutDebugPanel(isCreate: effectiveMode == .create)
-            }
-            #endif
-
-            // DEBUG: Collapsible controls
-            #if DEBUG
-            if !showPartnerJoinView {
-                VStack {
-                    Spacer()
-                    if debugCollapsed {
-                        // Collapsed state - just a small toggle button
-                        HStack {
-                            Spacer()
-                            Button(action: { debugCollapsed = false }) {
-                                Image(systemName: "ladybug.fill")
-                                    .font(.system(size: 16))
-                                    .foregroundColor(.white)
-                                    .frame(width: 36, height: 36)
-                                    .background(
-                                        Circle()
-                                            .fill(Color.orange.opacity(0.8))
-                                    )
-                            }
-                            .padding(.trailing, 20)
-                        }
-                    } else {
-                        debugControlsPanel
-                            .padding(.horizontal, 20)
-                    }
-                    Spacer().frame(height: 40)
-                }
-            }
-
-            // Korean Join view overlay (fades in when showPartnerJoinView is true)
-            // Back button navigates to pairing screen (same as real flow)
-            if showPartnerJoinView {
-                ManualPairingScreenKorean(
-                    sessionMode: .join,
-                    roomCode: roomCode,
-                    onBackTapped: {
-                        // Navigate to pairing screen (resets WiFi timer)
-                        showPartnerJoinView = false
-                        onBackTapped?()
-                    },
-                    onSuccess: { roomId in
-                        showPartnerJoinView = false
-                        onSuccess?(roomId)
-                    }
-                )
-                .transition(.opacity)
-            }
-            #endif
         }
             .onChange(of: qrScanner.scannedCode) { _, code in
                 if let code = code, !code.isEmpty {
@@ -1979,112 +1609,6 @@ struct ManualPairingScreen: View {
         }
     }
 
-    // MARK: - Debug Controls
-
-    #if DEBUG
-    private var debugControlsPanel: some View {
-        VStack(spacing: 12) {
-            HStack {
-                Image(systemName: "ladybug.fill")
-                    .foregroundColor(.orange)
-                Text("Debug: Mode Switch")
-                    .font(.system(size: 14, weight: .semibold))
-                Spacer()
-                Button(action: { debugCollapsed = true }) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.secondary)
-                }
-            }
-
-            HStack(spacing: 12) {
-                Button(action: {
-                    debugSessionMode = .create
-                    sharedCodeManager.generateNewCode(language: "en")
-                }) {
-                    Text("🇺🇸 Create")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(effectiveMode == .create ? .white : .primary)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .frame(maxWidth: .infinity)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(effectiveMode == .create ? Color.orange : Color.gray.opacity(0.2))
-                        )
-                }
-                .buttonStyle(PlainButtonStyle())
-
-                Button(action: {
-                    // Fade to Korean Join view (partner's perspective)
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        showPartnerJoinView = true
-                    }
-                }) {
-                    Text("🇰🇷 Join")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.primary)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .frame(maxWidth: .infinity)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(Color.gray.opacity(0.2))
-                        )
-                }
-                .buttonStyle(PlainButtonStyle())
-            }
-
-            // Display generated code for testing (when in Join mode with a code generated)
-            if !sharedCodeManager.generatedRoomCode.isEmpty {
-                HStack {
-                    Text("Test Code:")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.secondary)
-                    Text(sharedCodeManager.generatedRoomCode)
-                        .font(.system(size: 13, weight: .bold, design: .monospaced))
-                        .foregroundColor(.orange)
-                    Text("(\(sharedCodeManager.generatorLanguage.uppercased()))")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(.secondary)
-                    Spacer()
-                    Button(action: {
-                        UIPasteboard.general.string = sharedCodeManager.generatedRoomCode
-                    }) {
-                        Image(systemName: "doc.on.doc")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
-                    }
-                }
-                .padding(.vertical, 4)
-            }
-
-            // Quick success button for testing
-            Button(action: {
-                onSuccess?("DEBUG-ROOM-\(enteredCode.isEmpty ? roomCode : enteredCode)")
-            }) {
-                Text("→ Simulate Success")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .frame(maxWidth: .infinity)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(Color.green)
-                    )
-            }
-            .buttonStyle(PlainButtonStyle())
-        }
-        .padding(16)
-        .glassEffect(.regular, in: .rect(cornerRadius: 12))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.orange.opacity(0.3), lineWidth: 1)
-        )
-    }
-    #endif
-
     // MARK: - Helper Methods
 
     /// The actual code to display - uses roomCodeManager in debug mode when available
@@ -2147,23 +1671,6 @@ struct ManualPairingScreen: View {
     }
 
     private func joinFailed(_ failure: PairingWebSocketManager.JoinFailure) {
-        #if DEBUG
-        // Single-device debug flow without a backend (Create here, then switch to the partner's
-        // Join screen): a code generated on this phone is accepted locally. A server that
-        // answered "unknown code" is never overridden.
-        if failure == .connection && sharedCodeManager.validateCode(enteredCode) {
-            joinSucceeded(roomId: enteredCode)
-            return
-        }
-        #if targetEnvironment(simulator)
-        // Simulator UI work with no backend: keep the old rule, codes starting with "9" fail
-        if failure == .connection && sharedCodeManager.generatedRoomCode.isEmpty && !enteredCode.hasPrefix("9") {
-            joinSucceeded(roomId: enteredCode)
-            return
-        }
-        #endif
-        #endif
-
         // Hide connecting state before showing error
         isConnecting = false
 
@@ -2720,23 +2227,6 @@ struct SetupSuccessScreen: View {
             .padding(.horizontal, 20)
             .padding(.top, AppSpacing.welcomeContentStart)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-
-            // DEBUG: Back button
-            #if DEBUG
-            VStack {
-                HStack {
-                    BackButton {
-                        hasProceeded = true  // Prevent auto-proceed
-                        onBackTapped?()
-                    }
-                    Spacer()
-                }
-                .padding(.leading, 20)
-                .padding(.top, LiveLayoutTuning.shared.languagesTop)  // level with the live screen's language row
-                Spacer()
-            }
-            .hiddenWhileRecording()
-            #endif
         }
         .onAppear {
             // Start animations 0.5 seconds after content loads
@@ -2747,9 +2237,6 @@ struct SetupSuccessScreen: View {
             // Auto-proceed 200ms after the check badge settles
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5 + SuccessCheckBadge.playDuration + 0.2) {
                 guard !hasProceeded else { return }
-                #if DEBUG
-                if RecordingDemo.holdsOnSuccess { return }  // pairing demo: the take ends here
-                #endif
                 hasProceeded = true
                 onProceed?()
             }
@@ -2906,36 +2393,13 @@ struct LiveTranslationScreen: View {
     // segment id. The chat redesign will render all of it; for now the latest line is shown.
     @State private var conversation = ConversationLog()
 
-    #if DEBUG
-    /// The scripted demo chat is playing (debug): the mic control shows its live, expanded state
-    @State private var isDemoPlaying = false
-    /// Who's talking in the reel's screen recording (LiveRecordingDemo), in place of the mic and captions
-    @State private var demoVoice: VoiceActivity?
-
-    // MARK: - Debug Mode State
-    @State private var showDebugMenu: Bool = false
-    @State private var selectedBubbleStyle: BubbleStyle = .launchDefault  // -orbStyle
-    @State private var simulatedAudioLevel: CGFloat = 0.0
-    @State private var isSimulatingSpeaking: Bool = false
-    @State private var useSiriGlass: Bool = false          // New Siri-style glass look (debug toggle)
-    @State private var debugOrbState: OrbState? = nil     // nil = Auto (follow real mic/playback state)
-    #else
     // The orb: the Combination style
     private let selectedBubbleStyle: BubbleStyle = .combination
     private let useSiriGlass = false
-    #endif
-
-    #if DEBUG
-    @State private var debugLanguage: String? = nil  // Override language in debug mode
-    #endif
 
     // MARK: - Language Properties
     private var effectiveLanguage: String {
-        #if DEBUG
-        return debugLanguage ?? language
-        #else
         return language
-        #endif
     }
 
     private var isKorean: Bool {
@@ -2971,33 +2435,21 @@ struct LiveTranslationScreen: View {
 
     // MARK: - Computed Properties
     private var effectiveAudioLevel: CGFloat {
-        #if DEBUG
-        if showDebugMenu { return simulatedAudioLevel }
-        #endif
         return audioLevel
     }
 
     private var effectiveIsSpeaking: Bool {
-        #if DEBUG
-        if showDebugMenu { return isSimulatingSpeaking }
-        #endif
         return isSpeaking
     }
 
     /// The mic is listening (or the debug panel is simulating it)
     private var isMicRunning: Bool {
-        #if DEBUG
-        if showDebugMenu { return true }
-        #endif
         return isSessionActive
     }
 
     /// What the orb should be doing right now.
     /// A debug override wins; otherwise derived from playback + mic state.
     private var effectiveOrbState: OrbState {
-        #if DEBUG
-        if let override = debugOrbState { return override }
-        #endif
         if audioPlayback.isOutputActive { return .responding }   // translated speech is playing
         if effectiveIsSpeaking && isMicRunning { return .listening }
         return .idle                                              // waiting / other person talking
@@ -3005,9 +2457,6 @@ struct LiveTranslationScreen: View {
 
     /// Who's talking, for the voice glow, the partner's edge light and the orb's pulse
     private var voiceActivity: VoiceActivity {
-        #if DEBUG
-        if let demoVoice { return demoVoice }  // the reel's screen recording
-        #endif
         return VoiceActivity.resolve(
             micLevel: effectiveAudioLevel,
             iAmSpeaking: effectiveIsSpeaking,
@@ -3021,17 +2470,11 @@ struct LiveTranslationScreen: View {
     /// The mic control's session state; held live (expanded, as in a live conversation) while the
     /// debug demo chat plays
     private var micSessionBinding: Binding<Bool> {
-        #if DEBUG
-        if isDemoPlaying { return .constant(true) }
-        #endif
         return $isSessionActive
     }
 
     /// Intensity the orb animates with (0...1). Debug slider when overriding, else live mic level.
     private var effectiveOrbLevel: CGFloat {
-        #if DEBUG
-        if debugOrbState != nil { return simulatedAudioLevel }
-        #endif
         return effectiveAudioLevel
     }
 
@@ -3066,9 +2509,6 @@ struct LiveTranslationScreen: View {
                 languageSelectorView
                     .padding(.top, liveLayout.languagesTop)
                 ConversationChatView(turns: conversation.turns, isKorean: isKorean)
-                    #if DEBUG
-                    .replacedByLiveDemoChat()  // the reel's recording: a scripted thread
-                    #endif
             }
             // Newest bubble micGap above the mic button (micBottom up from the screen's bottom edge,
             // 80pt tall; ChatLayoutTuning); the chat's own bottom padding holds its shadow
@@ -3100,9 +2540,6 @@ struct LiveTranslationScreen: View {
                 }
                 Spacer()
             }
-            #if DEBUG
-            .hiddenWhileRecording()  // the reel's recording has no connection
-            #endif
 
             // Voice & honorifics cards - micMenuBottom above the screen's bottom edge, uncovered by the lifted mic button
             VStack {
@@ -3175,32 +2612,8 @@ struct LiveTranslationScreen: View {
                     }
                 }
             }
-
-            // Debug overlay (bottom right)
-            #if DEBUG
-            VStack {
-                Spacer()
-                HStack {
-                    Spacer()
-                    liveTranslationDebugOverlay
-                        .padding(.trailing, 16)
-                        .padding(.bottom, 100)
-                }
-            }
-            .hiddenWhileRecording()
-
-            // Chat bubble radius, padding, gaps and spring (speech-bubble button, bottom left)
-            ChatLayoutPanel()
-            #endif
         }
         .onAppear {
-            #if DEBUG
-            if isOrbPreview {
-                // Screenshot / preview harness: no server round-trip, so frames are deterministic
-                applyOrbLaunchArguments()
-                return
-            }
-            #endif
             // Labels, captions and notices follow the language this screen was opened with
             iSpeakEnglish = effectiveLanguage == "en"
             setupWebSocket()
@@ -3210,11 +2623,6 @@ struct LiveTranslationScreen: View {
             reconnectTask?.cancel()
             disconnect()
         }
-        #if DEBUG
-        // The reel's screen recording (-liveDemo -demoAutopilot): plays the take through this state
-        .liveRecordingDemo(isSessionActive: $isSessionActive, hasStartedOnce: $hasStartedOnce,
-                           isMicMenuOpen: $isMicMenuOpen, honorificsOn: $honorificsOn, voice: $demoVoice)
-        #endif
     }
 
     // MARK: - Connection Status View
@@ -3478,353 +2886,6 @@ struct LiveTranslationScreen: View {
         webSocket.disconnect()
     }
 
-    // MARK: - Debug Overlay
-    #if DEBUG
-    private var liveTranslationDebugOverlay: some View {
-        VStack(alignment: .trailing, spacing: 8) {
-            // Bug icon button (always visible)
-            Button(action: {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                    showDebugMenu.toggle()
-                }
-            }) {
-                Image(systemName: "ladybug.fill")
-                    .font(.system(size: 20))
-                    .foregroundColor(.white)
-                    .frame(width: 44, height: 44)
-                    .background(
-                        Circle()
-                            .fill(Color.black.opacity(0.6))
-                    )
-            }
-
-            // Expandable menu (scrolls once it outgrows the safe area, so the ladybug stays put)
-            if showDebugMenu {
-                ScrollView(.vertical, showsIndicators: true) {
-                    VStack(alignment: .leading, spacing: 12) {
-                        // Start over on the welcome screen
-                        restartDebugSection
-
-                        Divider()
-                            .background(Color.white.opacity(0.2))
-
-                        // Chat text reveal style, and a scripted conversation to watch it
-                        // (kept near the top so "Play demo chat" shows without scrolling)
-                        ChatDebugSection(conversation: $conversation, isDemoPlaying: $isDemoPlaying,
-                                         iSpeakKorean: isKorean)
-
-                        Divider()
-                            .background(Color.white.opacity(0.2))
-
-                        // Where the language row and the mic (with the menu cards) sit
-                        LiveLayoutDebugSection()
-
-                        Divider()
-                            .background(Color.white.opacity(0.2))
-
-                        // Voice glow and the partner's edge light: preview and strength
-                        VoiceGlowDebugSection()
-
-                        Divider()
-                            .background(Color.white.opacity(0.2))
-
-                        // Orb look: classic vs new Siri glass
-                        orbLookDebugSection
-
-                        Divider()
-                            .background(Color.white.opacity(0.2))
-
-                        // Orb state: idle / listening / responding
-                        orbStateDebugSection
-
-                        Divider()
-                            .background(Color.white.opacity(0.2))
-
-                        // Language toggle section
-                        languageDebugSection
-
-                        Divider()
-                            .background(Color.white.opacity(0.2))
-
-                        // Bubble style section (classic looks only)
-                        bubbleStyleDebugSection
-
-                        Divider()
-                            .background(Color.white.opacity(0.2))
-
-                        // Audio simulation section
-                        audioSimulationDebugSection
-                    }
-                    .padding(12)
-                }
-                .frame(maxHeight: 440)
-                .fixedSize(horizontal: true, vertical: false)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(Color.black.opacity(0.75))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(Color.white.opacity(0.1), lineWidth: 1)
-                        )
-                )
-                .transition(.scale(scale: 0.8, anchor: .topTrailing).combined(with: .opacity))
-            }
-        }
-    }
-
-    private var restartDebugSection: some View {
-        Button(action: {
-            NotificationCenter.default.post(name: .debugRestartToHome, object: nil)
-        }) {
-            HStack(spacing: 6) {
-                Image(systemName: "arrow.counterclockwise")
-                Text("Restart on home screen")
-                    .font(.system(size: 12, weight: .semibold))
-            }
-            .foregroundColor(.white)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(
-                Capsule()
-                    .fill(Color.white.opacity(0.12))
-            )
-        }
-    }
-
-    private var orbLookDebugSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("ORB LOOK")
-                .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                .foregroundColor(.white.opacity(0.5))
-
-            Toggle(isOn: $useSiriGlass.animation(.easeInOut(duration: 0.35))) {
-                HStack(spacing: 6) {
-                    Image(systemName: "sparkles")
-                        .foregroundColor(useSiriGlass ? AppColors.gradientPeach : .white.opacity(0.7))
-                    Text(useSiriGlass ? "Siri Glass (new)" : "Classic")
-                        .font(.system(size: 12))
-                }
-            }
-            .toggleStyle(SwitchToggleStyle(tint: AppColors.gradientPeach))
-            .foregroundColor(.white)
-        }
-    }
-
-    private var orbStateDebugSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("ORB STATE")
-                .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                .foregroundColor(.white.opacity(0.5))
-
-            HStack(spacing: 6) {
-                orbStateChip(nil, label: "Auto")
-                orbStateChip(.idle, label: "Idle")
-            }
-            HStack(spacing: 6) {
-                orbStateChip(.listening, label: "Listening")
-                orbStateChip(.responding, label: "Responding")
-            }
-
-            Text("Now: \(effectiveOrbState.displayName)")
-                .font(.system(size: 9, design: .monospaced))
-                .foregroundColor(.white.opacity(0.4))
-            Text("Idle = other person talking")
-                .font(.system(size: 9, design: .monospaced))
-                .foregroundColor(.white.opacity(0.4))
-        }
-    }
-
-    private func orbStateChip(_ state: OrbState?, label: String) -> some View {
-        let isSelected = debugOrbState == state
-        return Button(action: {
-            withAnimation(.easeInOut(duration: 0.25)) {
-                debugOrbState = state
-            }
-        }) {
-            Text(label)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(isSelected ? AppColors.gradientPeach : .white)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(isSelected ? Color.white.opacity(0.2) : Color.clear)
-                )
-        }
-        .buttonStyle(.plain)
-    }
-
-    /// True only on the `-orbPreview` launch route (see KorEngTranslatorApp), never in the normal flow
-    private var isOrbPreview: Bool {
-        roomId == "ORB-PREVIEW" && (ProcessInfo.processInfo.arguments.contains("-orbPreview") || LiveRecordingDemo.isOn)
-    }
-
-    /// Launch arguments for screenshot / preview runs (Debug builds only), e.g.
-    /// `-orbPreview -siriGlass 1 -orbState listening -orbLevel 0.6 -bubbleStyle 3`
-    private func applyOrbLaunchArguments() {
-        let args = ProcessInfo.processInfo.arguments
-        func value(after flag: String) -> String? {
-            guard let i = args.firstIndex(of: flag), i + 1 < args.count else { return nil }
-            return args[i + 1]
-        }
-        if args.contains("-orbPreview") {
-            hasStartedOnce = true   // hide the "Tap the mic" overlay so the orb is unobstructed
-        }
-        if let raw = value(after: "-siriGlass") {
-            useSiriGlass = (raw as NSString).boolValue
-        }
-        if let raw = value(after: "-orbState") {
-            debugOrbState = OrbState(rawValue: raw.lowercased())
-        }
-        if let raw = value(after: "-orbLevel"), let level = Double(raw) {
-            simulatedAudioLevel = CGFloat(min(max(level, 0), 1))
-        }
-        if let raw = value(after: "-bubbleStyle"), let n = Int(raw), let style = BubbleStyle(rawValue: n) {
-            selectedBubbleStyle = style
-        }
-        if args.contains("-chatDemo") {
-            // Scripted two-person conversation, to screenshot the chat without a partner phone
-            isDemoPlaying = true
-            _ = ConversationDemo.play(into: $conversation, iSpeakKorean: isKorean) {
-                isDemoPlaying = false
-            }
-        }
-    }
-
-    private var languageDebugSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("LANGUAGE")
-                .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                .foregroundColor(.white.opacity(0.5))
-
-            HStack(spacing: 8) {
-                // English button
-                Button(action: {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        debugLanguage = "en"
-                    }
-                }) {
-                    HStack(spacing: 4) {
-                        Text("🇺🇸")
-                        Text("EN")
-                            .font(.system(size: 12, weight: .semibold))
-                    }
-                    .foregroundColor(effectiveLanguage == "en" ? AppColors.gradientPeach : .white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(effectiveLanguage == "en" ? Color.white.opacity(0.2) : Color.clear)
-                    )
-                }
-                .buttonStyle(.plain)
-
-                // Korean button
-                Button(action: {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        debugLanguage = "ko"
-                    }
-                }) {
-                    HStack(spacing: 4) {
-                        Text("🇰🇷")
-                        Text("KR")
-                            .font(.system(size: 12, weight: .semibold))
-                    }
-                    .foregroundColor(effectiveLanguage == "ko" ? AppColors.gradientPeach : .white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(effectiveLanguage == "ko" ? Color.white.opacity(0.2) : Color.clear)
-                    )
-                }
-                .buttonStyle(.plain)
-            }
-
-            // Show current language info
-            Text("User selected: \(language.uppercased())")
-                .font(.system(size: 9, design: .monospaced))
-                .foregroundColor(.white.opacity(0.4))
-        }
-    }
-
-    private var bubbleStyleDebugSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("BUBBLE STYLE")
-                .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                .foregroundColor(.white.opacity(0.5))
-
-            ForEach(BubbleStyle.allCases, id: \.rawValue) { style in
-                Button(action: {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        selectedBubbleStyle = style
-                    }
-                }) {
-                    HStack(spacing: 8) {
-                        Text("\(style.rawValue)")
-                            .font(.system(size: 14, weight: .bold, design: .monospaced))
-                            .frame(width: 20)
-
-                        Text(style.displayName)
-                            .font(.system(size: 12, weight: .medium))
-
-                        Spacer()
-
-                        if selectedBubbleStyle == style {
-                            Image(systemName: "checkmark")
-                                .font(.system(size: 10, weight: .bold))
-                        }
-                    }
-                    .foregroundColor(selectedBubbleStyle == style ? AppColors.gradientPeach : .white)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(selectedBubbleStyle == style ? Color.white.opacity(0.15) : Color.clear)
-                    )
-                }
-                .buttonStyle(.plain)
-            }
-        }
-    }
-
-    private var audioSimulationDebugSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("AUDIO SIMULATION")
-                .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                .foregroundColor(.white.opacity(0.5))
-
-            // Speaking toggle
-            Toggle(isOn: $isSimulatingSpeaking) {
-                HStack {
-                    Image(systemName: isSimulatingSpeaking ? "mic.fill" : "mic")
-                        .foregroundColor(isSimulatingSpeaking ? AppColors.gradientPeach : .white.opacity(0.7))
-                    Text("Speaking")
-                        .font(.system(size: 12))
-                }
-            }
-            .toggleStyle(SwitchToggleStyle(tint: AppColors.gradientPeach))
-            .foregroundColor(.white)
-
-            // Audio level slider
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text("Level")
-                        .font(.system(size: 11))
-                        .foregroundColor(.white.opacity(0.7))
-                    Spacer()
-                    Text(String(format: "%.2f", simulatedAudioLevel))
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundColor(AppColors.gradientPeach)
-                }
-
-                Slider(value: $simulatedAudioLevel, in: 0...1)
-                    .tint(AppColors.gradientPeach)
-            }
-        }
-    }
-    #endif
-
     // MARK: - Language Selector View
     private var languageSelectorView: some View {
         VStack(spacing: 4) {
@@ -3956,22 +3017,7 @@ struct PairingScreenKorean: View {
     @State private var hasShownHeadphoneAlert = false
     @State private var headphoneAlertTimer: Timer? = nil
 
-    // DEBUG: Mode toggle for simulator testing
-    #if DEBUG
-    #if targetEnvironment(simulator)
-    @State private var debugMode = true   // Simulator: no real pairing, use the debug controls
-    #else
-    @State private var debugMode = RecordingDemo.isPairingDemo  // Device: pair for real (the toggle below still switches), except in the recording demo
-    #endif
-    @State private var debugHeadphonesConnected = RecordingDemo.startsWithHeadphones  // pairing demo
-    #endif
-
     private var effectiveHeadphoneStatus: Bool {
-        #if DEBUG
-        if debugMode {
-            return debugHeadphonesConnected
-        }
-        #endif
         return headphoneMonitor.isConnected
     }
 
@@ -4047,25 +3093,10 @@ struct PairingScreenKorean: View {
                 .padding(.top, LiveLayoutTuning.shared.languagesTop)  // level with the live screen's language row
                 Spacer()
             }
-
-            // DEBUG: Explicit controls panel at bottom (folds into a ladybug), and the layout panel
-            #if DEBUG
-            CollapsibleDebugControls {
-                debugControlsPanelKorean
-            }
-            PartnerSearchLayoutPanel()
-            #endif
         }
         .onAppear {
-            #if DEBUG
-            if !debugMode {
-                pairingManager.connect(direction: direction, headphonesConnected: effectiveHeadphoneStatus)
-                startHeadphoneAlertTimer()
-            }
-            #else
             pairingManager.connect(direction: direction, headphonesConnected: effectiveHeadphoneStatus)
             startHeadphoneAlertTimer()
-            #endif
         }
         .onDisappear {
             pairingManager.disconnect()
@@ -4073,13 +3104,7 @@ struct PairingScreenKorean: View {
             headphoneAlertTimer = nil
         }
         .onChange(of: headphoneMonitor.isConnected) { _, newValue in
-            #if DEBUG
-            if !debugMode {
-                pairingManager.sendHeadphoneStatus(connected: newValue)
-            }
-            #else
             pairingManager.sendHeadphoneStatus(connected: newValue)
-            #endif
 
             // If headphones connected, cancel alert timer
             if newValue {
@@ -4111,9 +3136,6 @@ struct PairingScreenKorean: View {
         } message: {
             Text("실시간 번역을 들으려면 헤드폰이 필요해요.")
         }
-        #if DEBUG
-        .pairingDemoSearch(headphones: $debugHeadphonesConnected) { onSuccess?($0) }
-        #endif
     }
 
     // MARK: - Headphone Alert Logic (Korean)
@@ -4133,69 +3155,12 @@ struct PairingScreenKorean: View {
     }
 
     private func openBluetoothSettings() {
-        #if DEBUG
-        if RecordingDemo.openFakeBluetoothSettings() { return }  // English pairing demo
-        #endif
         #if os(iOS)
         if let url = URL(string: "App-Prefs:root=Bluetooth") {
             UIApplication.shared.open(url)
         }
         #endif
     }
-
-    // MARK: - Debug Controls (Korean)
-
-    #if DEBUG
-    @ViewBuilder
-    private var debugControlsPanelKorean: some View {
-        VStack(spacing: 12) {
-            Text("DEBUG CONTROLS")
-                .font(.caption.bold())
-                .foregroundColor(.white)
-
-            Toggle("Debug Mode", isOn: $debugMode)
-                .toggleStyle(SwitchToggleStyle(tint: .orange))
-                .foregroundColor(.white)
-
-            // Pairing mode (remembered): Starter / Joiner jumps to the Create/Join choice
-            PairingModeDebugPicker(onDarkBackground: true) { mode in
-                if mode == .starterJoiner {
-                    onManualPairing?("")
-                }
-            }
-
-            TypographyDebugPicker(onDarkBackground: true)
-
-            if debugMode {
-                Toggle("Headphones", isOn: $debugHeadphonesConnected)
-                    .toggleStyle(SwitchToggleStyle(tint: .green))
-                    .foregroundColor(.white)
-
-                Button("Manual Pairing") {
-                    let roomCode = String(format: "%06d", Int.random(in: 0...999999))
-                    onManualPairing?(roomCode)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(Color.orange)
-                .foregroundColor(.white)
-                .cornerRadius(8)
-
-                Button("Success") {
-                    onSuccess?("debug-room-id")
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(Color.green)
-                .foregroundColor(.white)
-                .cornerRadius(8)
-            }
-        }
-        .padding()
-        .background(Color.black.opacity(0.7))
-        .cornerRadius(12)
-    }
-    #endif
 }
 
 // Korean version of ManualPairingScreen
@@ -4223,147 +3188,63 @@ struct ManualPairingScreenKorean: View {
     @ObservedObject private var sharedCodeManager = RoomCodeManager.shared
     @StateObject private var pairingManager = PairingWebSocketManager()
 
-    #if DEBUG
-    @State private var debugSessionMode: SessionMode? = nil
-    @State private var debugCollapsed = true
-    @State private var debugLanguage: String = "ko"  // "en" or "ko" for cross-language switching
-    @State private var showPartnerJoinView = false  // Fade to English Join view
-    #endif
-
     private var effectiveMode: SessionMode {
-        #if DEBUG
-        return debugSessionMode ?? sessionMode
-        #else
         return sessionMode
-        #endif
     }
-
-    // In debug mode, Join should show English (partner's language)
-    #if DEBUG
-    private var isShowingPartnerLanguage: Bool {
-        debugSessionMode == .join
-    }
-    #endif
 
     // Localized text properties for cross-language debug support (Korean → English for partner)
     private var titleText: String {
-        #if DEBUG
-        if isShowingPartnerLanguage {
-            return "Can't find your partner?"
-        }
-        #endif
         return "파트너를 찾을 수 없나요?"
     }
 
     private var subtitleText: String {
-        #if DEBUG
-        if isShowingPartnerLanguage {
-            return "You might be on different networks."
-        }
-        #endif
         return "다른 네트워크에 있을 수 있어요."
     }
 
     private var titleFont: Font {
-        #if DEBUG
-        if isShowingPartnerLanguage {
-            return AppTypography.h2
-        }
-        #endif
         return AppTypography.h2Korean
     }
 
     private var bodyFont: Font {
-        #if DEBUG
-        if isShowingPartnerLanguage {
-            return AppTypography.b2
-        }
-        #endif
         return AppTypography.b2Korean
     }
 
     private var h3Font: Font {
-        #if DEBUG
-        if isShowingPartnerLanguage {
-            return AppTypography.h3
-        }
-        #endif
         return AppTypography.h3Korean
     }
 
     private var b3Font: Font {
-        #if DEBUG
-        if isShowingPartnerLanguage {
-            return AppTypography.b3
-        }
-        #endif
         return AppTypography.b3Korean
     }
 
     // Join mode localized text (Korean → English for partner)
     private var scanQRText: String {
-        #if DEBUG
-        if isShowingPartnerLanguage {
-            return "Scan their QR code:"
-        }
-        #endif
         return "QR 코드를 스캔하세요:"
     }
 
     private var cameraNotAvailableSimulatorText: String {
-        #if DEBUG
-        if isShowingPartnerLanguage {
-            return "Camera not available in Simulator"
-        }
-        #endif
         return "시뮬레이터에서 카메라를 사용할 수 없습니다"
     }
 
     private var cameraNotAvailableText: String {
-        #if DEBUG
-        if isShowingPartnerLanguage {
-            return "Camera not available"
-        }
-        #endif
         return "카메라를 사용할 수 없습니다"
     }
 
     private var manualEntryText: String {
-        #if DEBUG
-        if isShowingPartnerLanguage {
-            return "Not scanning? Enter in their code."
-        }
-        #endif
         return "스캔이 안 되나요? 코드를 입력하세요."
     }
 
     private var verifyingCodeText: String {
-        #if DEBUG
-        if isShowingPartnerLanguage {
-            return "Verifying code..."
-        }
-        #endif
         return "코드 확인 중..."
     }
 
     private var invalidCodeText: String {
-        #if DEBUG
-        if isShowingPartnerLanguage {
-            return "Invalid code. Please try again."
-        }
-        #endif
         return "잘못된 코드입니다. 다시 시도해 주세요."
     }
 
     private var backgroundElementsOpacity: Double {
         isCodeFieldFocused ? 1.0 : 0.9
     }
-
-    #if DEBUG
-    private var mainContentOpacity: Double {
-        showPartnerJoinView ? 0 : 1
-    }
-    #endif
 
     var body: some View {
         GeometryReader { geometry in
@@ -4483,26 +3364,12 @@ struct ManualPairingScreenKorean: View {
                     .transition(.opacity)
                 }
             }
-            #if DEBUG
-            .opacity(mainContentOpacity)
-            .animation(.easeInOut(duration: 0.3), value: showPartnerJoinView)
-            #endif
 
             // Back button
             VStack {
                 HStack {
                     BackButton {
-                        #if DEBUG
-                        if showPartnerJoinView {
-                            // Navigate to pairing screen when viewing partner's screen
-                            showPartnerJoinView = false
-                            onBackTapped?()
-                        } else {
-                            onBackTapped?()
-                        }
-                        #else
                         onBackTapped?()
-                        #endif
                     }
                     Spacer()
                 }
@@ -4510,66 +3377,6 @@ struct ManualPairingScreenKorean: View {
                 .padding(.top, LiveLayoutTuning.shared.languagesTop)  // level with the live screen's language row
                 Spacer()
             }
-            #if DEBUG
-            .opacity(mainContentOpacity)
-            .animation(.easeInOut(duration: 0.3), value: showPartnerJoinView)
-            #endif
-
-            // DEBUG: layout panel (ruler, bottom left) - the whole unit's top, then each gap
-            #if DEBUG
-            if !showPartnerJoinView {
-                PairingLayoutDebugPanel(isCreate: effectiveMode == .create)
-            }
-            #endif
-
-            // DEBUG: Collapsible controls
-            #if DEBUG
-            if !showPartnerJoinView {
-                VStack {
-                    Spacer()
-                    if debugCollapsed {
-                        // Collapsed state - just a small toggle button
-                        HStack {
-                            Spacer()
-                            Button(action: { debugCollapsed = false }) {
-                                Image(systemName: "ladybug.fill")
-                                    .font(.system(size: 16))
-                                    .foregroundColor(.white)
-                                    .frame(width: 36, height: 36)
-                                    .background(
-                                        Circle()
-                                            .fill(Color.orange.opacity(0.8))
-                                    )
-                            }
-                            .padding(.trailing, 20)
-                        }
-                    } else {
-                        debugControlsPanelManualKorean
-                            .padding(.horizontal, 20)
-                    }
-                    Spacer().frame(height: 40)
-                }
-            }
-
-            // English Join view overlay (fades in when showPartnerJoinView is true)
-            // Back button navigates to pairing screen (same as real flow)
-            if showPartnerJoinView {
-                ManualPairingScreen(
-                    sessionMode: .join,
-                    roomCode: roomCode,
-                    onBackTapped: {
-                        // Navigate to pairing screen (resets WiFi timer)
-                        showPartnerJoinView = false
-                        onBackTapped?()
-                    },
-                    onSuccess: { roomId in
-                        showPartnerJoinView = false
-                        onSuccess?(roomId)
-                    }
-                )
-                .transition(.opacity)
-            }
-            #endif
         }
             .onChange(of: qrScanner.scannedCode) { _, code in
                 if let code = code, !code.isEmpty {
@@ -4613,111 +3420,6 @@ struct ManualPairingScreenKorean: View {
             }
         }
     }
-
-    // MARK: - Debug Controls (Korean Manual Pairing)
-    #if DEBUG
-    private var debugControlsPanelManualKorean: some View {
-        VStack(spacing: 12) {
-            HStack {
-                Image(systemName: "ladybug.fill")
-                    .foregroundColor(.orange)
-                Text("Debug: Mode Switch")
-                    .font(.system(size: 14, weight: .semibold))
-                Spacer()
-                Button(action: { debugCollapsed = true }) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.secondary)
-                }
-            }
-
-            HStack(spacing: 12) {
-                Button(action: {
-                    debugSessionMode = .create
-                    sharedCodeManager.generateNewCode(language: "ko")
-                }) {
-                    Text("🇰🇷 Create")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(effectiveMode == .create ? .white : .primary)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .frame(maxWidth: .infinity)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(effectiveMode == .create ? Color.orange : Color.gray.opacity(0.2))
-                        )
-                }
-                .buttonStyle(PlainButtonStyle())
-
-                Button(action: {
-                    // Fade to English Join view (partner's perspective)
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        showPartnerJoinView = true
-                    }
-                }) {
-                    Text("🇺🇸 Join")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.primary)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .frame(maxWidth: .infinity)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(Color.gray.opacity(0.2))
-                        )
-                }
-                .buttonStyle(PlainButtonStyle())
-            }
-
-            // Display generated code for testing (when in Join mode with a code generated)
-            if !sharedCodeManager.generatedRoomCode.isEmpty {
-                HStack {
-                    Text("Test Code:")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.secondary)
-                    Text(sharedCodeManager.generatedRoomCode)
-                        .font(.system(size: 13, weight: .bold, design: .monospaced))
-                        .foregroundColor(.orange)
-                    Text("(\(sharedCodeManager.generatorLanguage.uppercased()))")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(.secondary)
-                    Spacer()
-                    Button(action: {
-                        UIPasteboard.general.string = sharedCodeManager.generatedRoomCode
-                    }) {
-                        Image(systemName: "doc.on.doc")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
-                    }
-                }
-                .padding(.vertical, 4)
-            }
-
-            // Quick success button for testing
-            Button(action: {
-                onSuccess?("DEBUG-ROOM-\(enteredCode.isEmpty ? roomCode : enteredCode)")
-            }) {
-                Text("→ Simulate Success")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .frame(maxWidth: .infinity)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(Color.green)
-                    )
-            }
-            .buttonStyle(PlainButtonStyle())
-        }
-        .padding(16)
-        .glassEffect(.regular, in: .rect(cornerRadius: 12))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.orange.opacity(0.3), lineWidth: 1)
-        )
-    }
-    #endif
 
     // MARK: - Create Mode Content (Korean)
     private func createModeContentKorean(pageWidth: CGFloat) -> some View {
@@ -4986,23 +3688,6 @@ struct ManualPairingScreenKorean: View {
     }
 
     private func joinFailed(_ failure: PairingWebSocketManager.JoinFailure) {
-        #if DEBUG
-        // Single-device debug flow without a backend (Create here, then switch to the partner's
-        // Join screen): a code generated on this phone is accepted locally. A server that
-        // answered "unknown code" is never overridden.
-        if failure == .connection && sharedCodeManager.validateCode(enteredCode) {
-            joinSucceeded(roomId: enteredCode)
-            return
-        }
-        #if targetEnvironment(simulator)
-        // Simulator UI work with no backend: keep the old rule, codes starting with "9" fail
-        if failure == .connection && sharedCodeManager.generatedRoomCode.isEmpty && !enteredCode.hasPrefix("9") {
-            joinSucceeded(roomId: enteredCode)
-            return
-        }
-        #endif
-        #endif
-
         // Hide connecting state before showing error
         isConnecting = false
 
@@ -5092,22 +3777,6 @@ struct SetupSuccessScreenKorean: View {
             .padding(.horizontal, 20)
             .padding(.top, AppSpacing.welcomeContentStart)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-
-            #if DEBUG
-            VStack {
-                HStack {
-                    BackButton {
-                        hasProceeded = true
-                        onBackTapped?()
-                    }
-                    Spacer()
-                }
-                .padding(.leading, 20)
-                .padding(.top, LiveLayoutTuning.shared.languagesTop)  // level with the live screen's language row
-                Spacer()
-            }
-            .hiddenWhileRecording()
-            #endif
         }
         .onAppear {
             // Start animations 0.5 seconds after content loads
@@ -5118,9 +3787,6 @@ struct SetupSuccessScreenKorean: View {
             // Auto-proceed 200ms after the check badge settles
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5 + SuccessCheckBadge.playDuration + 0.2) {
                 guard !hasProceeded else { return }
-                #if DEBUG
-                if RecordingDemo.holdsOnSuccess { return }  // pairing demo: the take ends here
-                #endif
                 hasProceeded = true
                 onProceed?()
             }

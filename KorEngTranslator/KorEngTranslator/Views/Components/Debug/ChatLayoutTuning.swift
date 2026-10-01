@@ -103,23 +103,3 @@ final class ChatLayoutTuning {
         """
     }
 }
-
-#if DEBUG
-/// CHAT BUBBLES panel for the live screen (speech-bubble button, bottom left)
-struct ChatLayoutPanel: View {
-    private var layout: ChatLayoutTuning { .shared }
-
-    var body: some View {
-        LayoutTunerPanel("CHAT BUBBLES", toggleIcon: "bubble.left.and.bubble.right.fill",
-                         toggleOnLeading: true, launchArgument: "-chatLayoutPanel",
-                         isDefault: layout.isDefault, onReset: { layout.reset() },
-                         summary: { layout.summary }) {
-            // Radius, padding, text gap, mic gap and the spring are baked in (see the defaults above)
-            LayoutTunerRow("Same gap", value: layout.sameSpeakerGap, range: 0...40) { layout.sameSpeakerGap = max(0, $0) }
-            LayoutTunerRow("Switch gap", value: layout.speakerChangeGap, range: 0...60) { layout.speakerChangeGap = max(0, $0) }
-            LayoutTunerRow("Fade height", value: layout.fadeHeight, range: 0...160) { layout.fadeHeight = max(0, $0) }
-            LayoutTunerRow("Fade blur", value: layout.fadeBlur, range: 0...30) { layout.fadeBlur = max(0, $0) }
-        }
-    }
-}
-#endif

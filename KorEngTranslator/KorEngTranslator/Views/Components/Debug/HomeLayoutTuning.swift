@@ -107,23 +107,3 @@ final class HomeLayoutTuning {
         """
     }
 }
-
-#if DEBUG
-/// Ladybug + Layout panel on the home screen: sliders for the text position, the gaps, and the
-/// cards' position, height and corner radius
-struct HomeLayoutDebugPanel: View {
-    private var layout: HomeLayoutTuning { .shared }
-
-    var body: some View {
-        LayoutTunerPanel("HOME LAYOUT", launchArgument: "-homeLayoutPanel", isDefault: layout.isDefault,
-                         onReset: { layout.reset() }, summary: { layout.summary }) {
-            LayoutTunerRow("Text Y", value: layout.textTop, range: 0...max(1, layout.lowestTextTop)) { layout.moveText(toTop: $0) }
-            LayoutTunerRow("Title ↔ body", value: layout.currentTitleBodyGap, range: 0...120) { layout.titleBodyGap = $0 }
-            LayoutTunerRow("Text ↔ cards", value: layout.currentTextCardsGap, range: 0...240) { layout.textCardsGap = $0 }
-            LayoutTunerRow("Card Y", value: layout.cardTop, range: 0...700) { layout.cardTop = $0 }
-            LayoutTunerRow("Card height", value: layout.cardHeight, range: 120...400) { layout.cardHeight = $0 }
-            LayoutTunerRow("Card radius", value: layout.cardRadius, range: 0...60) { layout.cardRadius = $0 }
-        }
-    }
-}
-#endif

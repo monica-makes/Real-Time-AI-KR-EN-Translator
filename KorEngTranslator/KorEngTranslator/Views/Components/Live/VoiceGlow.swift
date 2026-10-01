@@ -27,13 +27,6 @@ struct VoiceActivity: Equatable {
     ///   - partnerAudioPlaying: the partner's translated speech is playing on this phone
     static func resolve(micLevel: CGFloat, iAmSpeaking: Bool, micRunning: Bool, myCaptionLive: Bool,
                         partnerCaptionLive: Bool, partnerAudioPlaying: Bool) -> VoiceActivity {
-        #if DEBUG
-        switch VoiceGlowTuning.shared.preview {
-        case .auto: break
-        case .me: return VoiceActivity(myLevel: 0.65, partnerSpeaking: false, mySpeechLike: true)
-        case .partner: return VoiceActivity(myLevel: 0, partnerSpeaking: true)
-        }
-        #endif
         let partnerSpeaking = partnerCaptionLive || partnerAudioPlaying
         guard !partnerSpeaking else { return VoiceActivity(myLevel: 0, partnerSpeaking: true) }
         if micRunning {
@@ -471,57 +464,3 @@ private struct EdgeBeam: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { warmedUp = true }
     }
 }
-
-#if DEBUG
-// MARK: - Debug
-
-/// GLOW section for the live screen's debug panel: preview either side's light, and its strength
-struct VoiceGlowDebugSection: View {
-    private var tuning: VoiceGlowTuning { .shared }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("GLOW")
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                    .foregroundColor(.white.opacity(0.5))
-                Spacer()
-                Button("Reset") {
-                    withAnimation(.easeInOut(duration: 0.25)) { tuning.reset() }
-                }
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(.white)
-                .disabled(tuning.isDefault)
-                .opacity(tuning.isDefault ? 0.4 : 1)
-            }
-            HStack(spacing: 6) {
-                chip("Auto", .auto)
-                chip("Me talking", .me)
-                chip("They talk", .partner)
-            }
-            LayoutTunerRow("Mine %", value: tuning.mineStrength, range: 0...200) { tuning.mineStrength = max(0, $0) }
-            LayoutTunerRow("Theirs %", value: tuning.theirsStrength, range: 0...200) { tuning.theirsStrength = max(0, $0) }
-            LayoutTunerRow("Orb pulse %", value: tuning.orbPulse, range: 0...40) { tuning.orbPulse = max(0, $0) }
-        }
-        .frame(width: 280)
-    }
-
-    private func chip(_ label: String, _ preview: VoiceGlowTuning.Preview) -> some View {
-        let isSelected = tuning.preview == preview
-        return Button {
-            tuning.preview = preview
-        } label: {
-            Text(label)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(isSelected ? AppColors.gradientPeach : .white)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(isSelected ? Color.white.opacity(0.2) : Color.white.opacity(0.06))
-                )
-        }
-        .buttonStyle(.plain)
-    }
-}
-#endif

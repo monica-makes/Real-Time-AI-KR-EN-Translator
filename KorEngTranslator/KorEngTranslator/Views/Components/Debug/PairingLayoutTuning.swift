@@ -63,28 +63,3 @@ final class PairingLayoutTuning {
         """
     }
 }
-
-#if DEBUG
-/// Ruler + layout panel on the manual pairing screens: the whole unit's top and the square → code
-/// section gap, for the mode on screen
-struct PairingLayoutDebugPanel: View {
-    let isCreate: Bool
-
-    private var layout: PairingLayoutTuning { .shared }
-
-    var body: some View {
-        LayoutTunerPanel(isCreate ? "CREATE LAYOUT" : "JOIN LAYOUT", toggleIcon: "ruler.fill",
-                         toggleOnLeading: true, launchArgument: "-pairingLayoutPanel",
-                         isDefault: layout.isDefault, onReset: { layout.reset() },
-                         summary: { layout.summary }) {
-            if isCreate {
-                LayoutTunerRow("Top", value: layout.createTop, range: 0...500) { layout.createTop = $0 }
-                LayoutTunerRow("QR ↔ share", value: layout.shareGap, range: 0...300) { layout.shareGap = $0 }
-            } else {
-                LayoutTunerRow("Top", value: layout.joinTop, range: 0...500) { layout.joinTop = $0 }
-                LayoutTunerRow("Cam ↔ code", value: layout.codeEntryGap, range: 0...200) { layout.codeEntryGap = $0 }
-            }
-        }
-    }
-}
-#endif

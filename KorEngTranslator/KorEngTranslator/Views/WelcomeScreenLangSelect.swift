@@ -84,11 +84,7 @@ enum PairingEntryMode: String, CaseIterable {
     static let storageKey = "debugPairingEntryMode"
 
     static var current: PairingEntryMode {
-        #if DEBUG
-        return PairingEntryMode(rawValue: UserDefaults.standard.string(forKey: storageKey) ?? "") ?? .autoPairing
-        #else
         return .autoPairing
-        #endif
     }
 
     var label: String {
@@ -98,110 +94,6 @@ enum PairingEntryMode: String, CaseIterable {
         }
     }
 }
-
-#if DEBUG
-/// Debug picker for the pairing mode. The choice is remembered for the next language pick, and
-/// `onSelect` lets the current screen jump straight to the chosen mode's first screen.
-struct PairingModeDebugPicker: View {
-    var onDarkBackground = false
-    var onSelect: ((PairingEntryMode) -> Void)?
-
-    @AppStorage(PairingEntryMode.storageKey) private var mode: PairingEntryMode = .autoPairing
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("PAIRING MODE")
-                .font(.system(size: 10, weight: .bold))
-                .foregroundColor(onDarkBackground ? .white.opacity(0.6) : .secondary)
-
-            HStack(spacing: 8) {
-                ForEach(PairingEntryMode.allCases, id: \.self) { option in
-                    Button(action: {
-                        mode = option
-                        onSelect?(option)
-                    }) {
-                        Text(option.label)
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(mode == option ? .white : (onDarkBackground ? .white : .primary))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .frame(maxWidth: .infinity)
-                            .background(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .fill(mode == option ? Color.orange : Color.gray.opacity(onDarkBackground ? 0.35 : 0.2))
-                            )
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                }
-            }
-        }
-    }
-}
-
-/// Debug picker for the typography (Classic / Söhne). Switching restarts on the welcome screen so
-/// every screen redraws with the new fonts.
-struct TypographyDebugPicker: View {
-    var onDarkBackground = false
-
-    @AppStorage(TypographyStyle.storageKey) private var style: TypographyStyle = TypographyStyle.debugDefault
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("TYPOGRAPHY")
-                .font(.system(size: 10, weight: .bold))
-                .foregroundColor(onDarkBackground ? .white.opacity(0.6) : .secondary)
-
-            HStack(spacing: 8) {
-                ForEach(TypographyStyle.allCases, id: \.self) { option in
-                    Button(action: {
-                        guard option != style else { return }
-                        style = option
-                        NotificationCenter.default.post(name: .debugRestartToHome, object: nil)
-                    }) {
-                        Text(option.label)
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(style == option ? .white : (onDarkBackground ? .white : .primary))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .frame(maxWidth: .infinity)
-                            .background(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .fill(style == option ? Color.orange : Color.gray.opacity(onDarkBackground ? 0.35 : 0.2))
-                            )
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                }
-            }
-        }
-    }
-}
-
-/// Debug Controls card for the Create/Join screen (styled like the pairing screen's panel)
-struct PairingModeDebugCard: View {
-    var onSelect: ((PairingEntryMode) -> Void)?
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Image(systemName: "ladybug.fill")
-                    .foregroundColor(.orange)
-                Text("Debug Controls")
-                    .font(.system(size: 14, weight: .semibold))
-                Spacer()
-            }
-            PairingModeDebugPicker(onSelect: onSelect)
-            TypographyDebugPicker()
-            GradientAtmosphereDebugPicker()
-        }
-        .padding(16)
-        .glassEffect(.regular, in: .rect(cornerRadius: 12))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.orange.opacity(0.3), lineWidth: 1)
-        )
-    }
-}
-#endif
 
 // MARK: - Welcome Screen Language Select
 
@@ -385,11 +277,6 @@ struct WelcomeScreenLangSelect: View {
                         Spacer()
                     }
                     .padding(.top, HomeLayoutTuning.shared.cardTop)
-
-                    #if DEBUG
-                    // Layout panel: try the text position, gaps, card height and corner radius
-                    HomeLayoutDebugPanel()
-                    #endif
                 }
                 .onboardingPush(from: pushEdge)
             }
@@ -410,31 +297,11 @@ struct WelcomeScreenLangSelect: View {
             }
         }
         .onAppear {
-            #if DEBUG
-            // Pairing demo autopilot: the heading starts at t0 with the autopilot, once the app is on screen
-            if RecordingDemo.config.autopilot, RecordingDemo.role != nil {
-                DispatchQueue.main.asyncAfter(deadline: .now() + RecordingDemo.Autopilot.homeSettle) {
-                    startAnimationCycle()
-                }
-                return
-            }
-            #endif
             startAnimationCycle()
         }
         .onDisappear {
             stopTimers()
         }
-        #if DEBUG
-        // Pairing demo autopilot (-demoAutopilot): taps a language card on schedule, same as a finger
-        .pairingDemoLanguageTap { role in
-            let language: LanguageOption = role == .ko ? .korean : .english
-            onboardingState.selectedLanguage = language
-            onLanguageSelected?(language)
-            DispatchQueue.main.asyncAfter(deadline: .now() + AppStyle.cardSelectNavigationDelay) {
-                OnboardingPush.go(.forward, edge: $pushEdge) { showNewScreen = true }
-            }
-        }
-        #endif
     }
 
     // MARK: - Animation Methods
@@ -516,13 +383,7 @@ struct WelcomeScreenLangSelect: View {
     private func typingInterval(index: Int) -> TimeInterval {
         // Add slight random variation (±0.01s) for organic feel
         let baseInterval = 1.0 / charactersPerSecond
-        #if DEBUG
-        // Pairing demo autopilot: the same wobble on both phones and in every take
-        let randomVariation = RecordingDemo.typingJitter(index: index, korean: !isShowingEnglish)
-            ?? Double.random(in: -0.01...0.01)
-        #else
         let randomVariation = Double.random(in: -0.01...0.01)
-        #endif
         return max(0.02, baseInterval + randomVariation)
     }
 
@@ -903,22 +764,6 @@ struct EnglishSelectedScreen: View {
 
                         Spacer()
                     }
-
-                    #if DEBUG
-                    // Debug: switch pairing mode (Auto-pair jumps back to auto-pairing)
-                    VStack {
-                        Spacer()
-                        PairingModeDebugCard { mode in
-                            if mode == .autoPairing {
-                                OnboardingPush.go(.forward, edge: $pushEdge) {
-                                    currentScreen = .pairing(direction: "en_to_kr")
-                                }
-                            }
-                        }
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 40)
-                    }
-                    #endif
                 }
                 .onboardingPush(from: pushEdge)
             }
@@ -1102,22 +947,6 @@ struct KoreanSelectedScreen: View {
 
                         Spacer()
                     }
-
-                    #if DEBUG
-                    // Debug: switch pairing mode (Auto-pair jumps back to auto-pairing)
-                    VStack {
-                        Spacer()
-                        PairingModeDebugCard { mode in
-                            if mode == .autoPairing {
-                                OnboardingPush.go(.forward, edge: $pushEdge) {
-                                    currentScreen = .pairing(direction: "kr_to_en")
-                                }
-                            }
-                        }
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 40)
-                    }
-                    #endif
                 }
                 .onboardingPush(from: pushEdge)
             }
@@ -1348,11 +1177,6 @@ struct LookingForPartnerScreen: View {
 
     @State private var hasProceeded = false
 
-    #if DEBUG
-    /// Headphones override for simulator testing (the 🎧 button)
-    @State private var debugOverride: Bool? = nil
-    #endif
-
     var body: some View {
         ZStack {
             // Background
@@ -1413,37 +1237,6 @@ struct LookingForPartnerScreen: View {
 
                 Spacer()
             }
-
-            #if DEBUG
-            // Headphones override button for simulator testing
-            VStack {
-                Spacer()
-                HStack {
-                    Spacer()
-                    Button(action: {
-                        if debugOverride == nil {
-                            debugOverride = true
-                        } else if debugOverride == true {
-                            debugOverride = false
-                        } else {
-                            debugOverride = nil
-                        }
-                    }) {
-                        Text("🎧 \(debugStateLabel)")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(
-                                Capsule()
-                                    .fill(Color.black.opacity(0.6))
-                            )
-                    }
-                    .padding(.trailing, 20)
-                    .padding(.bottom, 40)
-                }
-            }
-            #endif
         }
     }
 
@@ -1451,24 +1244,8 @@ struct LookingForPartnerScreen: View {
         let card = HeadphoneStatusCard(onConnectionChange: { isConnected in
             handleConnectionChange(isConnected)
         })
-        #if DEBUG
-        var overridden = card
-        overridden.debugOverride = debugOverride
-        return overridden
-        #else
         return card
-        #endif
     }
-
-    #if DEBUG
-    private var debugStateLabel: String {
-        switch debugOverride {
-        case .none: return "AUTO"
-        case .some(true): return "ON"
-        case .some(false): return "OFF"
-        }
-    }
-    #endif
 
     private func handleConnectionChange(_ isConnected: Bool) {
         guard isConnected && !hasProceeded else { return }
@@ -1586,15 +1363,7 @@ struct HeadphoneStatusCard: View {
     @StateObject private var detector = HeadphoneDetector()
     var onConnectionChange: ((Bool) -> Void)?
 
-    #if DEBUG
-    /// Headphones override for simulator testing
-    var debugOverride: Bool? = nil
-    #endif
-
     private var isConnected: Bool {
-        #if DEBUG
-        if let debugOverride { return debugOverride }
-        #endif
         return detector.isConnected
     }
 
