@@ -404,10 +404,10 @@ struct LiveDemoChat: View {
     private var measurements: some View {
         let line = Demo.lines[Demo.lines.count - 1]
         let politeLine = String(line.translated.dropLast()) + Demo.politeEnding + "?"
-        let translationFont = ChatFonts.translation(for: line.translated)
+        let translationFont = ChatFonts.font(for: line.translated, main: !line.mine)
         return ZStack {
             Text(verbatim: line.said)
-                .font(ChatFonts.original(for: line.said))
+                .font(ChatFonts.font(for: line.said, main: line.mine))
                 .fixedSize()
                 .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { polite.original = $0 }
             Text(verbatim: line.translated)
@@ -461,11 +461,15 @@ private struct LiveDemoBubble: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: tuning.rowSpacing) {
-            revealed(line.said, color: AppColors.secondaryText, start: LiveRecordingDemo.originalStart)
-                .font(ChatFonts.original(for: line.said))
-                .lineSpacing(1)
-                .fixedSize(horizontal: false, vertical: true)
-            translationRow
+            // ChatBubble's rows: this phone's language (English) at the bottom, larger - my words in my
+            // bubbles, the translation in my partner's - and the Korean on top, smaller
+            if line.mine {
+                translationRow
+                saidRow
+            } else {
+                saidRow
+                translationRow
+            }
         }
         // The bubble widens with the 요 on its own curve
         .frame(width: polite.map { p in
@@ -479,9 +483,18 @@ private struct LiveDemoBubble: View {
         }
     }
 
+    /// What was said, revealed first
+    private var saidRow: some View {
+        revealed(line.said, color: rowColor(main: line.mine), start: LiveRecordingDemo.originalStart)
+            .font(ChatFonts.font(for: line.said, main: line.mine))
+            .lineSpacing(1)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
     @ViewBuilder
     private var translationRow: some View {
-        let font = ChatFonts.translation(for: line.translated)
+        let font = ChatFonts.font(for: line.translated, main: !line.mine)
+        let color = rowColor(main: !line.mine)
         let start = line.translationStart
         if let polite {
             // 먹을래 [요] ?: a slot opens before the question mark and the 요 rolls up into it from a line
@@ -489,7 +502,7 @@ private struct LiveDemoBubble: View {
             let words = line.translated.split(separator: " ").count
             let lastWord = clamp((t - start - Double(words - 1) * LiveRecordingDemo.wordStep) / LiveRecordingDemo.wordStep)
             HStack(alignment: .firstTextBaseline, spacing: 0) {
-                revealed(String(line.translated.dropLast()), color: AppColors.primaryText, start: start)
+                revealed(String(line.translated.dropLast()), color: color, start: start)
                 Text(verbatim: LiveRecordingDemo.politeEnding)
                     .foregroundStyle(AppColors.claudeOrange)
                     .fixedSize()
@@ -499,12 +512,12 @@ private struct LiveDemoBubble: View {
                     .blur(radius: 1.5 * (1 - polite.roll))
                     .shadow(color: AppColors.claudeOrange.opacity(0.9 * polite.glow), radius: 2 + 6 * polite.glow)
                 Text(verbatim: "?")
-                    .foregroundStyle(AppColors.primaryText.opacity(lastWord))
+                    .foregroundStyle(color.opacity(lastWord))
             }
             .font(font)
             .fixedSize()
         } else {
-            revealed(line.translated, color: AppColors.primaryText, start: start)
+            revealed(line.translated, color: color, start: start)
                 .font(font)
                 .lineSpacing(1)
                 .fixedSize(horizontal: false, vertical: true)
@@ -525,5 +538,8 @@ private struct LiveDemoBubble: View {
     }
 
     private func clamp(_ x: Double) -> Double { min(max(x, 0), 1) }
+
+    /// The bottom (`main`) row in the primary color, the top one secondary
+    private func rowColor(main: Bool) -> Color { main ? AppColors.primaryText : AppColors.secondaryText }
 }
 #endif
