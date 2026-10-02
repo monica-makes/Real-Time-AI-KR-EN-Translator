@@ -460,15 +460,19 @@ private struct LiveDemoBubble: View {
     private var tuning: ChatLayoutTuning { .shared }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: tuning.rowSpacing) {
-            // ChatBubble's rows: this phone's language (English) at the bottom, larger - my words in my
-            // bubbles, the translation in my partner's - and the Korean on top, smaller
-            if line.mine {
-                translationRow
-                saidRow
-            } else {
-                saidRow
-                translationRow
+        // ChatBubble's text layout: hugs the rows while they fit on one line, and takes the full width
+        // on offer once one wraps
+        BubbleTextLayout {
+            VStack(alignment: .leading, spacing: tuning.rowSpacing) {
+                // ChatBubble's rows: this phone's language (English) at the bottom, larger - my words in
+                // my bubbles, the translation in my partner's - and the Korean on top, smaller
+                if line.mine {
+                    translationRow
+                    saidRow
+                } else {
+                    saidRow
+                    translationRow
+                }
             }
         }
         // The bubble widens with the 요 on its own curve
