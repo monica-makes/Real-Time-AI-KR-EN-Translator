@@ -2,9 +2,10 @@ import SwiftUI
 
 /// Both sides of the conversation as chat bubbles, newest at the bottom (AirPods Live
 /// Translation style): the partner's on the left in outlined glass, mine on the right in
-/// filled glass. Each bubble's top row is what was said, in the speaker's language (smaller,
-/// secondary); the bottom row is its translation (larger, primary). Words fade in as they're
-/// spoken and translated. Older bubbles fade and blur out under the language boxes above.
+/// filled glass. Each bubble's bottom row is in this phone's language (larger, primary): my own
+/// words in my bubbles, the translation in my partner's. The other language sits on top (smaller,
+/// secondary). Words fade in as they're spoken and translated. Older bubbles fade and blur out
+/// under the language boxes above.
 struct ConversationChatView: View {
     let turns: [ConversationTurn]
     /// This phone's language, for notices like "couldn't translate that"
@@ -96,8 +97,9 @@ struct ConversationChatView: View {
     }
 }
 
-/// One speaker's bubble: original on top, translation below. Radius, padding and the row gap come
-/// from ChatLayoutTuning. New words wait for the bubble to finish growing before they fade in.
+/// One speaker's bubble: the other language on top, this phone's language below (in my bubbles what I
+/// said, in my partner's its translation). Radius, padding and the row gap come from
+/// ChatLayoutTuning. New words wait for the bubble to finish growing before they fade in.
 struct ChatBubble: View {
     let turn: ConversationTurn
     let isKorean: Bool
@@ -109,29 +111,14 @@ struct ChatBubble: View {
     var body: some View {
         BubbleTextLayout {
             VStack(alignment: .leading, spacing: tuning.rowSpacing) {
-                // Top row: what was said, in the speaker's language - smaller and lighter
-                if !turn.original.isEmpty {
-                    RevealingText(
-                        text: turn.original,
-                        font: ChatFonts.original(for: turn.original),
-                        color: AppColors.secondaryText,
-                        lineSpacing: 1,
-                        reveal: reveal,
-                        startDelay: tuning.textDelaySeconds
-                    )
-                }
-
-                // Bottom row: the translation, in the listener's language
-                if !turn.translated.isEmpty {
-                    RevealingText(
-                        text: turn.translated,
-                        font: ChatFonts.translation(for: turn.translated),
-                        color: AppColors.primaryText,
-                        lineSpacing: 1,
-                        reveal: reveal,
-                        startDelay: tuning.textDelaySeconds
-                    )
-                    .transition(.identity)  // its words fade in on their own, per the reveal style
+                // This phone's language is always the bottom row, larger: the English speaker reads
+                // English big in both bubbles, the Korean speaker Korean
+                if isMine {
+                    translationRow
+                    originalRow
+                } else {
+                    originalRow
+                    translationRow
                 }
 
                 // Why a segment has no translation
@@ -152,6 +139,35 @@ struct ChatBubble: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityText)
+    }
+
+    /// What was said, in the speaker's language
+    @ViewBuilder
+    private var originalRow: some View {
+        if !turn.original.isEmpty {
+            row(turn.original, main: isMine)
+        }
+    }
+
+    /// The translation, in the listener's language
+    @ViewBuilder
+    private var translationRow: some View {
+        if !turn.translated.isEmpty {
+            row(turn.translated, main: !isMine)
+                .transition(.identity)  // its words fade in on their own, per the reveal style
+        }
+    }
+
+    /// The bottom (`main`) row is larger and primary; the top one smaller and lighter
+    private func row(_ text: String, main: Bool) -> RevealingText {
+        RevealingText(
+            text: text,
+            font: ChatFonts.font(for: text, main: main),
+            color: main ? AppColors.primaryText : AppColors.secondaryText,
+            lineSpacing: 1,
+            reveal: reveal,
+            startDelay: tuning.textDelaySeconds
+        )
     }
 
     private var accessibilityText: String {
@@ -225,14 +241,13 @@ struct ChatBubbleBackground: View {
 /// Sans-serif faces only, picked by the row's script: Pretendard for Korean, the English body
 /// face (Geist, or Söhne in the debug typography) otherwise
 enum ChatFonts {
-    /// Top row: smaller and lighter
-    static func original(for text: String) -> Font {
-        isKorean(text) ? AppTypography.b3Korean : AppTypography.b3
-    }
-
-    /// Bottom row: the translation, larger
-    static func translation(for text: String) -> Font {
-        isKorean(text) ? AppTypography.b2Korean : AppTypography.b2
+    /// A bubble row's face: `main` for the bottom row (this phone's language), larger; otherwise the
+    /// top row (the other language), smaller and lighter
+    static func font(for text: String, main: Bool) -> Font {
+        if isKorean(text) {
+            return main ? AppTypography.b2Korean : AppTypography.b3Korean
+        }
+        return main ? AppTypography.b2 : AppTypography.b3
     }
 
     static func isKorean(_ text: String) -> Bool {
