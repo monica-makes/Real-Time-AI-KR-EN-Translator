@@ -107,39 +107,41 @@ struct ChatBubble: View {
     private var isMine: Bool { turn.side == .me }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: tuning.rowSpacing) {
-            // Top row: what was said, in the speaker's language - smaller and lighter
-            if !turn.original.isEmpty {
-                RevealingText(
-                    text: turn.original,
-                    font: ChatFonts.original(for: turn.original),
-                    color: AppColors.secondaryText,
-                    lineSpacing: 1,
-                    reveal: reveal,
-                    startDelay: tuning.textDelaySeconds
-                )
-            }
+        BubbleTextLayout {
+            VStack(alignment: .leading, spacing: tuning.rowSpacing) {
+                // Top row: what was said, in the speaker's language - smaller and lighter
+                if !turn.original.isEmpty {
+                    RevealingText(
+                        text: turn.original,
+                        font: ChatFonts.original(for: turn.original),
+                        color: AppColors.secondaryText,
+                        lineSpacing: 1,
+                        reveal: reveal,
+                        startDelay: tuning.textDelaySeconds
+                    )
+                }
 
-            // Bottom row: the translation, in the listener's language
-            if !turn.translated.isEmpty {
-                RevealingText(
-                    text: turn.translated,
-                    font: ChatFonts.translation(for: turn.translated),
-                    color: AppColors.primaryText,
-                    lineSpacing: 1,
-                    reveal: reveal,
-                    startDelay: tuning.textDelaySeconds
-                )
-                .transition(.identity)  // its words fade in on their own, per the reveal style
-            }
+                // Bottom row: the translation, in the listener's language
+                if !turn.translated.isEmpty {
+                    RevealingText(
+                        text: turn.translated,
+                        font: ChatFonts.translation(for: turn.translated),
+                        color: AppColors.primaryText,
+                        lineSpacing: 1,
+                        reveal: reveal,
+                        startDelay: tuning.textDelaySeconds
+                    )
+                    .transition(.identity)  // its words fade in on their own, per the reveal style
+                }
 
-            // Why a segment has no translation
-            if let failure = turn.failure {
-                Text(ChatStrings.failure(failure, isKorean: isKorean))
-                    .font(isKorean ? AppTypography.subtextKorean : AppTypography.subtext)
-                    .foregroundColor(AppColors.errorRed)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .transition(.opacity)
+                // Why a segment has no translation
+                if let failure = turn.failure {
+                    Text(ChatStrings.failure(failure, isKorean: isKorean))
+                        .font(isKorean ? AppTypography.subtextKorean : AppTypography.subtext)
+                        .foregroundColor(AppColors.errorRed)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .transition(.opacity)
+                }
             }
         }
         .padding(.vertical, tuning.verticalPadding)
@@ -155,6 +157,23 @@ struct ChatBubble: View {
     private var accessibilityText: String {
         let speaker = isMine ? (isKorean ? "나" : "You") : (isKorean ? "상대방" : "Partner")
         return [speaker, turn.original, turn.translated].filter { !$0.isEmpty }.joined(separator: ". ")
+    }
+}
+
+/// A bubble's text: hugs it while every row fits on one line; once a row has to wrap, takes the full width
+/// on offer and keeps it, so a bubble that has reached its widest stays there while the rest of the
+/// sentence wraps under it. Sized to its widest wrapped line instead, the bubble shrank (on the grow
+/// spring) whenever a wrap pushed a word down to the next line. The portfolio's phone does the same.
+struct BubbleTextLayout: Layout {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard let content = subviews.first else { return .zero }
+        let oneLine = content.sizeThatFits(.unspecified)
+        guard let width = proposal.width, width < oneLine.width else { return oneLine }
+        return CGSize(width: width, height: content.sizeThatFits(ProposedViewSize(width: width, height: nil)).height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews.first?.place(at: bounds.origin, proposal: ProposedViewSize(width: bounds.width, height: nil))
     }
 }
 
