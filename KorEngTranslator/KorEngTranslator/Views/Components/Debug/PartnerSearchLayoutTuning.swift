@@ -80,9 +80,9 @@ struct PartnerSearchLayoutPanel: View {
 
 /// A setup screen's Debug Controls card that folds away: "Hide" above its top-right corner tucks it
 /// into a ladybug button (bottom right, left of the layout panel's button), and the ladybug brings
-/// it back. Remembered across launches.
+/// it back. Remembered across launches; the tester build starts folded.
 struct CollapsibleDebugControls<Panel: View>: View {
-    @AppStorage("debugControlsHidden") private var isHidden = false
+    @AppStorage("debugControlsHidden") private var isHidden = RecordingDemo.isTesterBuild
     @ViewBuilder let panel: () -> Panel
 
     var body: some View {
@@ -100,8 +100,9 @@ struct CollapsibleDebugControls<Panel: View>: View {
                         .background(Circle().fill(Color.black.opacity(0.6)))
                 }
                 .accessibilityLabel("Show debug controls")
-                // Left of the layout panel's toggle (16pt in, 44pt wide), on the same line
-                .padding(.trailing, 16 + 44 + 8)
+                // Left of the layout panel's toggle (16pt in, 44pt wide), on the same line; in the
+                // corner in the tester build, which has no layout panel
+                .padding(.trailing, RecordingDemo.isTesterBuild ? 16 : 16 + 44 + 8)
                 .padding(.bottom, 8)
                 .transition(.opacity.combined(with: .scale(scale: 0.8)))
             } else {

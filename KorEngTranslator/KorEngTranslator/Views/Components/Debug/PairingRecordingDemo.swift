@@ -50,6 +50,16 @@ enum RecordingDemo {
     static var role: Role? { config.role }
     static var isPairingDemo: Bool { config.role != nil }
     static var hidesDebugUI: Bool { config.hidesDebugUI }
+    /// A Debug build for trying the app on a phone, without the layout tuners: build it with
+    /// `SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG TESTER_BUILD'`. The debug controls stay (folded
+    /// into their ladybugs at first), so the flows can still be stepped through on one phone.
+    static let isTesterBuild: Bool = {
+        #if TESTER_BUILD
+        return true
+        #else
+        return false
+        #endif
+    }()
     /// The takes end on the success screen, so it doesn't move on to the live screen
     static var holdsOnSuccess: Bool { isPairingDemo }
     /// The Korean phone already has its headphones in
@@ -290,6 +300,16 @@ extension View {
     @ViewBuilder
     func hiddenWhileRecording() -> some View {
         if RecordingDemo.hidesDebugUI {
+            EmptyView()
+        } else {
+            self
+        }
+    }
+
+    /// The layout tuners (LayoutTunerPanel): gone while recording, and in the tester build
+    @ViewBuilder
+    func hiddenAsLayoutTuner() -> some View {
+        if RecordingDemo.hidesDebugUI || RecordingDemo.isTesterBuild {
             EmptyView()
         } else {
             self
