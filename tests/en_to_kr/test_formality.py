@@ -8,7 +8,7 @@ class TestFormalityConfig:
     """Tests for the FormalityConfig class."""
 
     def test_default_mode(self):
-        """Default should be non-honorific (해요체)."""
+        """Default should be non-honorific (casual 반말)."""
         config = FormalityConfig()
         assert config.honorific_mode is False
 
@@ -47,10 +47,10 @@ class TestFormalityConfig:
     def test_style_description(self):
         """Should return correct style description."""
         config = FormalityConfig(honorific_mode=False)
-        assert "해요체" in config.get_style_description()
+        assert "반말" in config.get_style_description()
 
         config.set_honorific(True)
-        assert "높임말" in config.get_style_description()
+        assert "존댓말" in config.get_style_description()
 
 
 class TestHonorificVerbs:

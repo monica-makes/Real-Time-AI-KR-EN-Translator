@@ -2376,7 +2376,9 @@ struct LiveTranslationScreen: View {
     @State private var isPaused: Bool = false  // Paused after starting: Play shows, More and Stop stay out
 
     // MARK: - Mic Menu State
-    // The voice & honorifics cards the mic button lifts to show. Local for now: not sent to the server yet.
+    // The voice & honorifics cards the mic button lifts to show. Honorifics is a room-wide
+    // setting: it goes to the server with the join and on every tap, and the server's
+    // config_updated confirmations keep both phones' cards in step. Voice is still local.
     @State private var isMicMenuOpen: Bool = false
     @State private var voiceChoice: VoiceChoice = .female
     @State private var honorificsOn: Bool = true
@@ -2420,6 +2422,15 @@ struct LiveTranslationScreen: View {
     private var honorificsTitle: String {
         if isKorean { return honorificsOn ? "존댓말: 켜짐" : "존댓말: 꺼짐" }
         return honorificsOn ? "Honorifics: ON" : "Honorifics: OFF"
+    }
+
+    /// Flip the Honorifics card and tell the room. The card changes at once; the server's
+    /// config_updated echo (also sent to the partner's phone) carries the same value back.
+    private func toggleHonorifics() {
+        honorificsOn.toggle()
+        if isConnected {
+            webSocket.sendConfigUpdate(honorificMode: honorificsOn)
+        }
     }
 
     // Where the language row and the mic rest (LiveLayoutTuning, tunable from the debug panel).
@@ -2552,7 +2563,7 @@ struct LiveTranslationScreen: View {
                         honorificsTitle: honorificsTitle,
                         isKorean: isKorean,
                         onVoiceTapped: { voiceChoice = voiceChoice == .male ? .female : .male },
-                        onHonorificsTapped: { honorificsOn.toggle() }
+                        onHonorificsTapped: { toggleHonorifics() }
                     )
                     .transition(.micMenuReveal)
                 }
@@ -2691,6 +2702,15 @@ struct LiveTranslationScreen: View {
             }
         }
 
+        // The room's honorific mode: inherited on join, or changed from the partner's phone
+        webSocket.onHonorificModeChanged = { enabled in
+            DispatchQueue.main.async {
+                guard honorificsOn != enabled else { return }
+                withAnimation { honorificsOn = enabled }
+                print("[LiveTranslation] Honorifics \(enabled ? "on" : "off") (room setting)")
+            }
+        }
+
         // Conversation text: both sides go into the log, which the display follows
         webSocket.onMyTranscript = { event in
             DispatchQueue.main.async {
@@ -2786,7 +2806,7 @@ struct LiveTranslationScreen: View {
         webSocket.joinRoom(
             roomId: roomId,
             userLanguage: userLanguage,
-            honorificMode: false
+            honorificMode: honorificsOn
         )
 
         // Update connection state based on WebSocket state

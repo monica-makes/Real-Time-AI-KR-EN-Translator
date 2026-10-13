@@ -32,7 +32,7 @@ class EnToKrPipeline(BasePipeline):
     Flow: English Audio -> STT -> Sentence Detector -> Translator -> TTS -> Korean Audio
 
     Note: No safety classifier needed - English is SVO so word order is simpler.
-    Formality toggle controls whether output uses 해요체 or 높임말.
+    Formality toggle (the app's Honorifics card) controls whether output is casual 반말 or polite 존댓말.
     """
 
     def __init__(

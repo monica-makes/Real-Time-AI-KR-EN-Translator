@@ -119,11 +119,11 @@ class TestEnToKrFlow:
     def test_formality_toggle(self, formality):
         """Test formality toggle during session."""
         assert formality.honorific_mode is False
-        assert "해요체" in formality.get_style_description()
+        assert "반말" in formality.get_style_description()
 
         formality.set_honorific(True)
         assert formality.honorific_mode is True
-        assert "높임말" in formality.get_style_description()
+        assert "존댓말" in formality.get_style_description()
 
 
 class TestBidirectionalContext:

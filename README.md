@@ -1,69 +1,147 @@
-# Bidirectional Korean ↔ English Real-Time Speech Translator
+# Dari – Real-Time Korean ↔ English Voice Translator
 
-A WebSocket-based backend for real-time bidirectional speech translation between Korean and English. Both directions can run simultaneously in a single session, enabling natural conversation between speakers of different languages.
+<a href="assets/dari-reel.mp4"><img src="assets/dari-reel.gif" alt="Dari reel: an English sentence is held until the Korean verb arrives, then spoken as one natural sentence" width="100%" height="auto"/></a>
 
-## Architecture
+<p align="center"><a href="assets/dari-reel.mp4"><strong>▶ Watch the full 45-second reel</strong></a> &nbsp;·&nbsp; <a href="portfolio/hold-or-commit.html"><strong>Try the clause gate in your browser</strong></a></p>
 
-```
-Korean Speaker                                    English Speaker
-     │                                                  │
-     │ Korean Audio                          English Audio
-     ▼                                                  ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                     WEBSOCKET HANDLER                           │
-│              Routes audio based on direction                    │
-└─────────────────────┬───────────────────────────┬───────────────┘
-                      │                           │
-                      ▼                           ▼
-┌─────────────────────────────────┐ ┌─────────────────────────────────┐
-│    KOREAN → ENGLISH PIPELINE    │ │    ENGLISH → KOREAN PIPELINE    │
-│                                 │ │                                 │
-│  STT (Korean)                   │ │  STT (English)                  │
-│       ↓                         │ │       ↓                         │
-│  Clause Detector                │ │  Sentence Detector              │
-│       ↓                         │ │  (simple punctuation)           │
-│  Safety Classifier              │ │       ↓                         │
-│  (SAFE/WAIT decision)           │ │  Translator (Claude)            │
-│       ↓                         │ │  + Formality Toggle             │
-│  Translator (Claude)            │ │       ↓                         │
-│       ↓                         │ │  TTS (Korean Voice)             │
-│  TTS (English Voice)            │ │                                 │
-└─────────────────────────────────┘ └─────────────────────────────────┘
-                      │                           │
-                      ▼                           ▼
-               English Audio                Korean Audio
-                      │                           │
-                      ▼                           ▼
-              Korean Speaker                English Speaker
-               (receives)                    (receives)
-```
+Dari is a live voice translator for conversations between a Korean speaker and an English speaker. Each person holds their own phone and hears the other in their own language, with the conversation shown as a two-sided chat on both screens. It is an iOS app (SwiftUI) backed by a Python streaming pipeline: Deepgram speech-to-text, Claude for translation, ElevenLabs for speech.
 
-## Key Differences Between Directions
+What sets it apart is that it was **built around the shape of the Korean language** rather than treating Korean as just another language in a list.
 
-| Aspect | Korean → English | English → Korean |
-|--------|------------------|------------------|
-| Word Order | SOV → SVO (complex) | SVO → SOV (simpler) |
-| Boundary Detection | Grammatical patterns | Punctuation |
-| Safety Classifier | **Required** | Not needed |
-| Formality | N/A | **Toggle (해요체/높임말)** |
+---
 
-### Why Korean → English Needs a Safety Classifier
+## Why Korean needs its own translator
 
-Korean verbs come at the end of sentences, so translating too early can produce incorrect results:
+Korean puts the verb last. The subject, the object, the time and the place all arrive first, and the word that decides what the sentence *means* (ate, didn't eat, want to eat, was told to eat) comes at the very end. Negation, tense, intent and politeness all live in that final verb ending.
+
+Spoken audio can't be taken back. A translator that commits as soon as it has a clause produces confident, fluent, wrong sentences:
 
 ```
 Korean:  저는 그 영화를 보고 싶지 않아요
          I    that movie  watch-and want-NEG
          "I don't want to watch that movie"
 
-Without classifier (translating at 보고):
-→ "I watched that movie and..." ❌
+Translating as soon as the clause looks complete (at 보고):
+→ "I watched that movie and..."      ✗
 
-With classifier (WAIT at 보고):
-→ "I don't want to watch that movie" ✓
+Holding at 보고 until the verb ending arrives:
+→ "I don't want to watch that movie"  ✓
 ```
 
-## Quick Start
+Waiting for the whole sentence every time fixes this, but makes the translator feel sluggish and robotic. Dari does neither. It reads each clause as it ends and decides, word by word, whether it is **safe to commit** or should **hold** for more.
+
+### The clause gate: hold or commit
+
+Before any Korean reaches the translation model, a rule-based gate inspects how the clause ends. It runs in well under a millisecond, so the decision costs nothing in latency.
+
+| What the clause ends with | Decision | Why |
+|---|---|---|
+| Sentence-final endings: `-요`, `-습니다`, `-다`, `-어`, questions `-까요`, `-나요`, `-니` | **Commit** | The verb has landed; the sentence is complete |
+| Modifiers: `-는`, `-은`, `-ㄴ`, `-을`, `-ㄹ` | **Hold** | A noun is coming; this is the first half of a phrase |
+| `-고` after an action verb (가고, 먹고) or a past tense | **Commit** | A completed action followed by "and" |
+| `-고` after a perception verb (보고, 듣고, 만나고) | **Hold** | "want to", "tried to" or an emotion usually follows |
+| `-서` / `-아서` / `-어서` | **Hold** | Cause and effect; the effect decides the meaning |
+| `-면`, `-지만`, `-니까` | **Commit** | The condition, contrast or reason is self-contained |
+| `-는데` | Commit if long, else hold | Background clause; short ones usually set up a twist |
+| `-려고` | **Hold** | "in order to" with the intent still unsaid |
+| Short affirmations: 네, 아니요, 맞아요, 그래 | **Commit** | One-word answers shouldn't wait |
+
+Three safety valves make sure a held clause never stalls the conversation:
+
+- a **pause** longer than 300 ms flushes whatever is buffered (the speaker stopped, so translate it),
+- a **timeout** of 3 s forces the buffer out,
+- a **buffer cap** of 100 characters does the same for run-on speech.
+
+The result is a translator that commits as often as it safely can and waits only when Korean grammar says the meaning isn't decided yet. The same rules are ported to the browser in [`portfolio/hold-or-commit.html`](portfolio/hold-or-commit.html), where you can step through a sentence word by word and watch each decision.
+
+English → Korean doesn't need the gate: English puts the verb early, so punctuation and a 500 ms pause are enough to find a sentence boundary.
+
+### Honorifics are a conversation setting
+
+Korean has levels of speech, and picking the wrong one is a social mistake, not a grammatical one. Dari exposes this as a single **Honorifics** (존댓말) card on the live screen:
+
+| | Register | Example for "Did you eat?" |
+|---|---|---|
+| **OFF** | 반말, casual speech between friends and peers | 밥 먹었어? |
+| **ON** | 존댓말, polite speech for elders, strangers and customers, with honorific verb forms (드시다, 계시다, 주무시다) and humble forms (드리다, 뵙다) | 진지 드셨어요? |
+
+The setting belongs to the **room**, not to one phone. Either person can change it mid-conversation, both phones show the same state, and it applies to the English speaker's words from the next sentence on. A phone that joins later inherits the room's setting.
+
+### One conversation, both directions
+
+Both directions share one translation context, so pronouns, names and topics carry across turns regardless of who is speaking. Translation streams token by token from Claude; a phrase buffer groups the stream into natural spoken chunks so the synthesized voice doesn't stutter word by word. Translated text reaches both phones as soon as it is complete, before the last audio clip, so the chat never lags the voice.
+
+---
+
+## How it works
+
+```
+Korean speaker's phone                               English speaker's phone
+        │ Korean audio                                        │ English audio
+        ▼                                                     ▼
+┌───────────────────────────────────────────────────────────────────────────┐
+│  FastAPI WebSocket server · one room per conversation · one socket per phone │
+└──────────────────┬─────────────────────────────────────────┬──────────────┘
+                   ▼                                         ▼
+┌──────────────────────────────────┐      ┌──────────────────────────────────┐
+│   KOREAN → ENGLISH PIPELINE      │      │   ENGLISH → KOREAN PIPELINE      │
+│                                  │      │                                  │
+│   Deepgram STT (ko)              │      │   Deepgram STT (en)              │
+│        ↓                         │      │        ↓                         │
+│   Clause detector                │      │   Sentence detector              │
+│   (endings · connectors · pause) │      │   (punctuation · pause)          │
+│        ↓                         │      │        ↓                         │
+│   Clause gate: hold or commit    │      │   Claude translation (streamed)  │
+│        ↓                         │      │   + Honorifics (반말 / 존댓말)    │
+│   Claude translation (streamed)  │      │        ↓                         │
+│        ↓                         │      │   Phrase buffer → ElevenLabs TTS │
+│   Phrase buffer → ElevenLabs TTS │      │                                  │
+└──────────────────┬───────────────┘      └───────────────┬──────────────────┘
+                   │ English voice + text                   │ Korean voice + text
+                   ▼                                        ▼
+        English speaker's phone                   Korean speaker's phone
+```
+
+| | Korean → English | English → Korean |
+|---|---|---|
+| Word order | SOV → SVO: meaning is decided by the final verb | SVO → SOV |
+| Boundary detection | Grammatical endings and connectors | Punctuation and pauses |
+| Clause gate | **Yes**, rule-based, before the model | Not needed |
+| Register | Follows the speaker | **Honorifics toggle** (반말 / 존댓말) |
+
+**Stack:** SwiftUI iOS app · Python 3 / FastAPI backend · Deepgram Nova-2 streaming STT · Claude Sonnet 5.5 streaming translation (with server-side fallback) · ElevenLabs Turbo v2.5 TTS · voice-based gender detection to pick a matching voice.
+
+**Latency budget** (per clause, either direction):
+
+| Component | Time |
+|---|---|
+| Speech-to-text | ~300 ms |
+| Boundary detection + clause gate | <10 ms |
+| Claude translation (first token) | ~400 ms |
+| Phrase buffer | <500 ms |
+| Text-to-speech | ~250 ms |
+| **Total** | **~1.5 s** |
+
+---
+
+## Repository layout
+
+```
+KorEngTranslator/   iOS app (SwiftUI): pairing flow, live screen, two-speaker chat, audio capture/playback
+src/                Backend
+  main.py           WebSocket server, rooms, orchestrator
+  pipelines/        kr_to_en (clause detector, clause gate/classifier) and en_to_kr (sentence detector, formality)
+  korean/           Korean grammatical patterns the gate is built on
+  services/         STT, translation, TTS, phrase buffer, voice detection
+  session/          Session manager and the shared translation context
+tests/              Backend tests (pytest) and a command-line harness for the iOS network layer
+portfolio/          "Hold or commit": the clause gate, ported to the browser
+assets/             The reel
+```
+
+---
+
+## Quick start
 
 1. Install dependencies:
 ```bash
@@ -86,13 +164,36 @@ cp .env.example .env
 - Both WebSocket endpoints are served on this port: `/ws/translate` (translation) and `/ws/pair` (Wi-Fi pairing).
 - `.venv/bin/python -m src.main` starts the same server using `HOST`/`PORT` from `.env` (defaults `0.0.0.0` and `8001`).
 
-4. Connect the iOS app:
+4. Open `KorEngTranslator/KorEngTranslator.xcodeproj` in Xcode and run the app:
 - **Simulator:** connects to `localhost`, i.e. `ws://localhost:8001/ws/translate`.
 - **Physical iPhone:** connects to the Mac's Bonjour name (`monicas-MacBook-Pro.local`, see `ServerConfig` in `WebSocketManager.swift`); the phone and Mac must be on the same Wi-Fi network. If that name doesn't resolve on your network, pass the Mac's LAN IP with the app's `-serverHost` launch argument (Xcode > Edit Scheme > Run > Arguments), e.g. `-serverHost 192.168.1.23`. Get the IP with `ipconfig getifaddr en0`. If you run the server on a port other than 8001, also pass `-serverPort <port>`.
 
-## WebSocket Protocol
+### Configuration
 
-### `/ws/translate` - rooms
+| Variable | Description |
+|----------|-------------|
+| `DEEPGRAM_API_KEY` | Deepgram API key for STT |
+| `ANTHROPIC_API_KEY` | Anthropic API key for translation |
+| `ELEVENLABS_API_KEY` | ElevenLabs API key for TTS |
+| `ELEVENLABS_KOREAN_VOICE_ID` | Korean voice ID |
+| `ELEVENLABS_ENGLISH_VOICE_ID` | English voice ID |
+| `LOG_LEVEL` | Logging level (default: INFO) |
+
+The gate's thresholds (`KO_PAUSE_THRESHOLD_MS`, `KO_CLAUSE_TIMEOUT_MS`, `KO_MAX_BUFFER_CHARS`), the English detector's, the phrase buffer's and the context window (`MAX_CONTEXT_EXCHANGES`) can all be overridden in `.env`; see `src/config.py`.
+
+### Running tests
+
+```bash
+pytest tests/ -v
+```
+
+`tests/ios_harness/run.sh offline` compiles the app's network layer standalone (no Xcode project needed) and checks message routing and the conversation log; `run.sh live ROOM01 speech.wav` joins a running server as the English speaker.
+
+---
+
+## WebSocket protocol
+
+### `/ws/translate` – rooms
 
 A conversation is a **room** with one Korean and one English speaker. Each phone opens its own
 socket and starts a session with its language; the second phone to name the same `room_id`
@@ -104,16 +205,17 @@ joins the first.
   "pairing_mode": "manual",
   "user_language": "ko",
   "room_id": "ABC123",
-  "config": {"honorific_mode": false}
+  "config": {"honorific_mode": true}
 }
 ```
 
-The server answers `{"type": "session_started", "room_id": "ABC123", "paired_via": "manual"}`
-and, once both are in, `{"type": "partner_joined"}` to both (`{"type": "partner_left"}` when one
-leaves). Without `room_id` the server creates a room and returns its id. The legacy form
+The server answers `{"type": "session_started", "room_id": "ABC123", "paired_via": "manual"}`,
+then a `config_updated` status with the room's settings (see below), and, once both are in,
+`{"type": "partner_joined"}` to both (`{"type": "partner_left"}` when one leaves). Without
+`room_id` the server creates a room and returns its id. The legacy form
 (`"directions": ["ko_to_en"]`, no `user_language`) still starts a solo session.
 
-### Send Audio
+### Send audio
 
 16 kHz mono PCM16, tagged with the speaker's direction (`ko_to_en` for the Korean speaker,
 `en_to_ko` for the English speaker):
@@ -127,27 +229,33 @@ leaves). Without `room_id` the server creates a room and returns its id. The leg
 }
 ```
 
-### Update Config (Mid-Session)
+### Honorifics (mid-session)
 
 ```json
-{
-  "type": "config_update",
-  "honorific_mode": true
-}
+{"type": "config_update", "honorific_mode": true}
 ```
 
-### End Session
+`honorific_mode` is room-wide: the first phone to join sets it, a later joiner inherits it, and
+either phone can change it. The server applies the change to both sessions and answers **both**
+phones with the room's current state, so the other phone's Honorifics card updates too:
 
 ```json
-{
-  "type": "session_end"
-}
+{"type": "status", "status": "config_updated", "honorific_mode": true, "gender": null}
 ```
 
-### Server Responses
+The same status follows every `session_started`, carrying the setting the joiner should show.
+`gender_override` (`"male"` / `"female"`) may be sent in the same message and stays per phone.
+
+### End session
+
+```json
+{"type": "session_end"}
+```
+
+### Server responses
 
 `direction` is always the **speaker's** direction. In a room, transcripts, translations and
-untranslatable-segment errors go to **both** phones (so a chat can show both sides); audio goes
+untranslatable-segment errors go to **both** phones (so the chat can show both sides); audio goes
 to the listener only; classifier and gender messages stay with the speaker. Solo, the speaker
 gets everything including the audio.
 
@@ -158,15 +266,15 @@ gets everything including the audio.
 ```
 
 **Translation** (same `segment_id` as its transcript; sent as soon as the text is complete,
-before the last audio clip):
+before the last audio clip; `honorific` is the mode the Korean was produced in, `null` for English):
 ```json
 {
   "type": "translation",
-  "direction": "ko_to_en",
-  "original": "안녕하세요.",
-  "translated": "Hello.",
+  "direction": "en_to_ko",
+  "original": "Did you eat?",
+  "translated": "진지 드셨어요?",
   "segment_id": "30b9835c",
-  "honorific": null
+  "honorific": true
 }
 ```
 
@@ -191,12 +299,12 @@ both phones receive it:
 `code` is `translation_refused` or `translation_failed`. Other errors (`"No active session"`,
 invalid direction, ...) have no `code` and go to the speaker only.
 
-**Classifier Decision (KO→EN only, speaker only):**
+**Clause gate decision (KO→EN only, speaker only):**
 ```json
 {"type": "classifier_decision", "clause": "그 영화를 보고", "connector": "고", "decision": "wait"}
 ```
 
-### `/ws/pair` - finding a partner
+### `/ws/pair` – finding a partner
 
 Connect with `?direction=ko_to_en` or `?direction=en_to_ko` (`kr_to_en` / `en_to_kr` are
 accepted too) and `?mode=wifi` (default) or `?mode=manual`.
@@ -213,68 +321,3 @@ accepted too) and `?mode=wifi` (default) or `?mode=manual`.
   single-use and dies when its creator disconnects.
 
 Both phones then open `/ws/translate` with that `room_id`.
-
-## Usage Scenarios
-
-### Korean Speaker Only
-```python
-SessionConfig(
-    directions=["ko_to_en"],
-    honorific_mode=False  # Not used
-)
-```
-
-### English Speaker to Elder
-```python
-SessionConfig(
-    directions=["en_to_ko"],
-    honorific_mode=True  # Use 높임말
-)
-```
-
-### Full Bidirectional
-```python
-SessionConfig(
-    directions=["ko_to_en", "en_to_ko"],
-    honorific_mode=False  # Can toggle mid-session
-)
-```
-
-## Formality Toggle (EN→KO)
-
-**OFF (해요체 - polite informal):**
-- 밥 먹었어요? (Did you eat?)
-- 안녕하세요 (Hello)
-
-**ON (높임말 - honorific):**
-- 진지 드셨어요? (Did you eat? - honorific)
-- 안녕하십니까 (Hello - honorific)
-
-## Running Tests
-
-```bash
-pytest tests/ -v
-```
-
-## Configuration
-
-| Variable | Description |
-|----------|-------------|
-| `DEEPGRAM_API_KEY` | Deepgram API key for STT |
-| `ANTHROPIC_API_KEY` | Anthropic API key for translation |
-| `ELEVENLABS_API_KEY` | ElevenLabs API key for TTS |
-| `ELEVENLABS_KOREAN_VOICE_ID` | Korean voice ID |
-| `ELEVENLABS_ENGLISH_VOICE_ID` | English voice ID |
-| `LOG_LEVEL` | Logging level (default: INFO) |
-
-## Latency Budget
-
-| Component | KO→EN | EN→KO |
-|-----------|-------|-------|
-| STT | ~300ms | ~300ms |
-| Boundary Detection | <10ms | <10ms |
-| Safety Classifier | <5ms | N/A |
-| Claude Translation | ~400ms | ~400ms |
-| Phrase Buffer | <500ms | <500ms |
-| TTS | ~250ms | ~250ms |
-| **Total** | **~1.5s** | **~1.5s** |

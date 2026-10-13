@@ -75,6 +75,8 @@ func runOffline() {
     manager.onPartnerTranslation = { partnerTranslations.append($0); log.apply($0, side: .partner) }
     manager.onTranslationFailed = { failuresSeen.append(($0, $1)); log.apply($0, side: $1) }
     manager.onError = { genericErrors.append($0) }
+    var honorificModes: [Bool] = []
+    manager.onHonorificModeChanged = { honorificModes.append($0) }
 
     // The Korean partner speaks: transcript, then translation (as the server now forwards them)
     manager.handleTextMessage(#"{"type":"transcript_interim","direction":"ko_to_en","text":"안녕"}"#)
@@ -95,6 +97,11 @@ func runOffline() {
     // A session-level error is not a translation failure
     manager.handleTextMessage(#"{"type":"error","message":"No active session","recoverable":true}"#)
 
+    // The room's honorific mode comes as config_updated statuses; other statuses carry none
+    manager.handleTextMessage(#"{"type":"status","status":"config_updated","honorific_mode":true,"gender":null}"#)
+    manager.handleTextMessage(#"{"type":"status","status":"session_started"}"#)
+    manager.handleTextMessage(#"{"type":"status","status":"config_updated","honorific_mode":false,"gender":"female"}"#)
+
     check(partnerTranscripts.map { $0.text } == ["안녕", "안녕하세요", "문제의 문장"], "partner transcripts (interim + finals) routed by ko_to_en")
     check(partnerTranscripts.map { $0.isFinal } == [false, true, true], "isFinal passed through")
     check(partnerTranscripts[1].segmentId == "k1", "segment id passed through on transcript")
@@ -105,6 +112,7 @@ func runOffline() {
     check(failuresSeen.count == 1 && failuresSeen[0].0.isRefusal && failuresSeen[0].0.segmentId == "k2" && failuresSeen[0].1 == .partner,
           "refusal delivered to onTranslationFailed as the partner's segment")
     check(genericErrors == ["No active session"], "generic error still goes to onError")
+    check(honorificModes == [true, false], "config_updated statuses deliver the room's honorific mode")
 
     let lines = log.lines
     check(lines.map { $0.id } == ["k1", "e1", "k2", "e2"], "log has one line per segment in arrival order")
