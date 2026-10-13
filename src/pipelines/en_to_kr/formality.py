@@ -18,13 +18,13 @@ HONORIFIC_VERBS = {
 
 class FormalityConfig:
     """
-    Binary formality toggle for Korean output.
+    Binary formality toggle for Korean output (the app's "Honorifics" / 존댓말 card).
 
-    OFF (default): 해요체 (polite informal)
-                   먹어요, 자요, 있어요, 말해요, 줘요
+    OFF: 반말 (casual, for a friend or peer)
+         먹었어?, 자, 있어, 말해, 줘
 
-    ON:            높임말 (honorific)
-                   드세요, 주무세요, 계세요, 말씀하세요, 드려요
+    ON:  존댓말 (polite speech, for an elder, a stranger or a customer), with
+         honorific verb forms: 드세요, 주무세요, 계세요, 말씀하세요, 드려요
     """
 
     def __init__(self, honorific_mode: bool = False):
@@ -70,5 +70,5 @@ class FormalityConfig:
     def get_style_description(self) -> str:
         """Get description of current style."""
         if self._honorific_mode:
-            return "높임말 (honorific)"
-        return "해요체 (polite informal)"
+            return "존댓말 (polite, with 높임말 honorific verbs)"
+        return "반말 (casual)"

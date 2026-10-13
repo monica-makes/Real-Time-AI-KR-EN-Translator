@@ -109,6 +109,9 @@ class WebSocketManager: ObservableObject {
     var onPartnerJoined: (() -> Void)?
     var onPartnerLeft: (() -> Void)?
     var onPairingTimeout: (() -> Void)?
+    /// The room's honorific mode, as the server confirms it: after joining (a second joiner
+    /// inherits the first phone's setting) and after either phone changes it
+    var onHonorificModeChanged: ((Bool) -> Void)?
     var onError: ((String) -> Void)?  // Server-reported session/connection error; the socket stays up
     var onDisconnected: ((String) -> Void)?  // Transport failure (socket dropped / unreachable)
 
@@ -457,6 +460,13 @@ class WebSocketManager: ObservableObject {
         }
     }
 
+    /// Change the room's honorific mode (존댓말 on/off for the English speaker's Korean).
+    /// The server applies it to both phones and confirms with a `config_updated` status.
+    func sendConfigUpdate(honorificMode: Bool) {
+        guard connectionState.isConnected else { return }
+        sendCodable(ConfigUpdateMessage(honorificMode: honorificMode))
+    }
+
     /// Send session end message
     func sendSessionEnd() {
         guard connectionState.isConnected else { return }
@@ -655,6 +665,9 @@ class WebSocketManager: ObservableObject {
 
         case .status(let msg):
             print("[WebSocketManager] Status: \(msg.status)")
+            if msg.status == "config_updated", let honorificMode = msg.honorificMode {
+                onHonorificModeChanged?(honorificMode)
+            }
 
         case .genderDetected(let msg):
             print("[WebSocketManager] Gender detected: \(msg.gender)")

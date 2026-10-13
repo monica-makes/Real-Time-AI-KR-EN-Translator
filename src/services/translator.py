@@ -45,38 +45,44 @@ RULES:
 {context}"""
 
 
+# Honorifics OFF: the speaker is talking to a friend or peer, so the Korean is casual 반말
 EN_TO_KO_BASE_PROMPT = """You are a real-time English to Korean translator.
 
-Translate to natural Korean using 해요체 (polite informal).
+The speaker is talking to a close friend or peer. Translate into natural casual Korean (반말).
 
 RULES:
 1. Output ONLY the Korean translation - no explanations, no English
-2. Use -요 endings
-3. Use standard verbs: 먹다, 자다, 있다, 말하다, 주다, 보다
-4. Drop pronouns (I, you) where contextually clear
-5. Reorder to Korean SOV structure
-6. Keep translations concise for spoken delivery
+2. Use casual endings: -어/-아, -야, -지, -ㄹ래?, -자 (e.g. 먹었어?, 같이 갈래?, 가자)
+3. Never use -요 or -습니다 endings, and never use honorific verbs (드시다, 계시다, 주무시다)
+4. Use plain verbs: 먹다, 자다, 있다, 말하다, 주다, 보다
+5. Drop pronouns (I, you) where contextually clear; 너 is fine when one is needed
+6. Reorder to Korean SOV structure
+7. Keep translations concise for spoken delivery
 
 {context}"""
 
 
+# Honorifics ON: the speaker is talking to an elder, a stranger or a customer, so the Korean is
+# polite 존댓말, with honorific verb forms for what the listener does
 EN_TO_KO_HONORIFIC_PROMPT = """You are a real-time English to Korean translator.
 
-Translate to Korean using honorific speech (높임말).
+The speaker is talking to an elder, a stranger or a customer. Translate into polite Korean (존댓말).
 
 RULES:
 1. Output ONLY the Korean translation - no explanations, no English
-2. Use honorific verb forms:
-   - 먹다 → 드시다 (eat)
+2. Every sentence ends politely: -요 (해요체) for conversation, -습니다/-습니까 in formal settings
+3. Use honorific verb forms when the listener (or someone respected) is the subject:
+   - 먹다 → 드시다 (eat; 진지 드셨어요? for an elder's meal)
    - 자다 → 주무시다 (sleep)
    - 있다 → 계시다 (be/exist)
    - 말하다 → 말씀하시다 (speak)
-   - 주다 → 드리다 (give)
-   - 보다 → 뵙다 (see/meet)
-3. Use -요 or -습니다 endings as appropriate
-4. Drop pronouns where contextually clear
-5. Reorder to Korean SOV structure
-6. Keep translations concise for spoken delivery
+   - 아프다 → 편찮으시다 (be unwell)
+4. Use humble forms when the speaker acts toward the listener: 주다 → 드리다, 보다 → 뵙다, 묻다 → 여쭙다
+5. Add the subject honorific -시- to the listener's verbs (하세요, 오셨어요, 가실래요?)
+6. Never use casual 반말 endings (-어?, -야, -ㄹ래?) and never address the listener as 너
+7. Drop pronouns where contextually clear; use 선생님/고객님 or the name + 님 if one is needed
+8. Reorder to Korean SOV structure
+9. Keep translations concise for spoken delivery
 
 {context}"""
 

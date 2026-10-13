@@ -151,6 +151,23 @@ struct AudioChunkMessage: Codable {
     }
 }
 
+/// Mid-session settings change. Honorifics are room-wide: the server applies the new mode to
+/// both phones' sessions and answers both with a `config_updated` status.
+struct ConfigUpdateMessage: Codable {
+    let type: String
+    let honorificMode: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case type
+        case honorificMode = "honorific_mode"
+    }
+
+    init(honorificMode: Bool) {
+        self.type = "config_update"
+        self.honorificMode = honorificMode
+    }
+}
+
 /// End of turn message (reserved for P1 walkie-talkie mode)
 struct EndOfTurnMessage: Codable {
     let type: String
@@ -296,11 +313,19 @@ struct ErrorMessage: Codable {
     }
 }
 
-/// Status/connection message
+/// Status/connection message. `config_updated` carries the session's current settings:
+/// sent after session_started (a second joiner inherits the room's honorific mode) and
+/// whenever either phone changes them.
 struct StatusMessage: Codable {
     let type: String
     let status: String
     let message: String?
+    let honorificMode: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case type, status, message
+        case honorificMode = "honorific_mode"
+    }
 }
 
 /// Gender detection result from server

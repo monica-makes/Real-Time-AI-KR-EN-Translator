@@ -174,8 +174,8 @@ async def test_request_shape_for_sonnet_5_5():
     [
         (TranslationDirection.KO_TO_EN, False, KO_TO_EN_PROMPT, "Korean to English"),
         (TranslationDirection.KO_TO_EN, True, KO_TO_EN_PROMPT, "Korean to English"),
-        (TranslationDirection.EN_TO_KO, False, EN_TO_KO_BASE_PROMPT, "해요체"),
-        (TranslationDirection.EN_TO_KO, True, EN_TO_KO_HONORIFIC_PROMPT, "높임말"),
+        (TranslationDirection.EN_TO_KO, False, EN_TO_KO_BASE_PROMPT, "반말"),
+        (TranslationDirection.EN_TO_KO, True, EN_TO_KO_HONORIFIC_PROMPT, "존댓말"),
     ],
     ids=["ko_to_en", "ko_to_en_honorific_ignored", "en_to_ko_base", "en_to_ko_honorific"],
 )

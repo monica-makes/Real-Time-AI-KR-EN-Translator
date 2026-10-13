@@ -51,6 +51,10 @@ class ConversationRoom:
         self.participants: Dict[str, WebSocket] = {}  # "en" or "ko" -> websocket
         self.orchestrators: Dict[str, "BidirectionalOrchestrator"] = {}  # "en" or "ko" -> orchestrator
         self.shared_context = SharedTranslationContext()
+        # Honorifics are a property of the conversation, not of one phone: the EN->KO
+        # translation runs on the English speaker's orchestrator, but either phone may
+        # flip the setting. None until the first participant joins.
+        self.honorific_mode: Optional[bool] = None
         logger.info(f"[Room {room_id}] Created")
 
     def add_participant(self, language: str, websocket: WebSocket, orchestrator: "BidirectionalOrchestrator"):
@@ -98,6 +102,32 @@ class ConversationRoom:
     def is_empty(self) -> bool:
         """Check if the room has no participants."""
         return len(self.participants) == 0
+
+    def resolve_honorific_mode(self, requested: bool) -> bool:
+        """
+        The honorific mode a joining participant's session should start with.
+
+        The first participant's setting becomes the room's; a later joiner inherits
+        it (and is told so in the config_updated status that follows session_started),
+        so both phones always show the same Honorifics state.
+        """
+        if self.honorific_mode is None:
+            self.honorific_mode = requested
+        return self.honorific_mode
+
+    async def set_honorific_mode(self, enabled: bool) -> None:
+        """
+        Change the room's honorific mode for everyone in it.
+
+        Applies to every participant's orchestrator (whichever one ends up running
+        the EN->KO translation) and tells both phones, so the phone that didn't tap
+        the card updates its Honorifics state too.
+        """
+        self.honorific_mode = enabled
+        for orchestrator in list(self.orchestrators.values()):
+            await orchestrator.update_config(honorific_mode=enabled)
+        for language in list(self.orchestrators):
+            await self.send_to(language, config_status(honorific_mode=enabled))
 
     def has_both_participants(self) -> bool:
         """Check if both participants are connected."""
@@ -294,6 +324,16 @@ async def health_check():
         "service": "bidirectional-translator",
         "version": "1.0.0",
         "active_sessions": session_manager.session_count,
+    }
+
+
+def config_status(honorific_mode: Optional[bool], gender: Optional[str] = None) -> dict:
+    """The status message that tells a phone the session's current settings."""
+    return {
+        "type": "status",
+        "status": "config_updated",
+        "honorific_mode": honorific_mode,
+        "gender": gender,
     }
 
 
@@ -572,7 +612,7 @@ async def websocket_translate(websocket: WebSocket):
 
         session = session_manager.create_session(
             directions=directions,
-            honorific_mode=honorific_mode,
+            honorific_mode=room.resolve_honorific_mode(honorific_mode),
         )
 
         # Create orchestrator with room context for audio routing
@@ -699,6 +739,7 @@ async def websocket_translate(websocket: WebSocket):
                                     await partner_ws.send_text(json.dumps(response))
                                 except:
                                     pass
+                                await send_json(config_status(session.honorific_mode))
 
                                 # Send partner_joined to both
                                 await send_json({"type": "partner_joined"})
@@ -732,12 +773,14 @@ async def websocket_translate(websocket: WebSocket):
                                 room, user_language, honorific_mode
                             )
 
-                            # Notify session started
+                            # Notify session started, then the room's settings (a second
+                            # joiner inherits the first phone's honorific mode)
                             await send_json({
                                 "type": "session_started",
                                 "room_id": room_id,
                                 "paired_via": "manual"
                             })
+                            await send_json(config_status(session.honorific_mode))
 
                             # Notify partner if they're already in the room
                             if room.get_partner_socket(user_language) is not None:
@@ -792,16 +835,20 @@ async def websocket_translate(websocket: WebSocket):
                             await send_error("No active session")
                             continue
 
+                        honorific_update = data.get("honorific_mode")
+                        if honorific_update is not None and room is not None:
+                            # Room-wide: applied to both orchestrators, announced to both phones
+                            await room.set_honorific_mode(bool(honorific_update))
+                            honorific_update = None
                         await orchestrator.update_config(
-                            honorific_mode=data.get("honorific_mode"),
+                            honorific_mode=honorific_update,
                             gender_override=data.get("gender_override"),
                         )
-                        await send_json({
-                            "type": "status",
-                            "status": "config_updated",
-                            "honorific_mode": session.honorific_mode if session else None,
-                            "gender": session.effective_gender if session else None,
-                        })
+                        if honorific_update is not None or data.get("gender_override") is not None or room is None:
+                            await send_json(config_status(
+                                session.honorific_mode if session else None,
+                                session.effective_gender if session else None,
+                            ))
 
                     elif msg_type == "audio_chunk":
                         if not orchestrator:
